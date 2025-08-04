@@ -1,17 +1,23 @@
 # engine/evaluation.py
 from .constants import (
-    Checkers, EMPTY, RED, WHITE, RED_KING, WHITE_KING,
+    EMPTY, RED, WHITE, RED_KING, WHITE_KING,
     COORD_TO_ACF, PIECE_VALUES, MATERIAL_MULTIPLIER,
     BACK_ROW_CORNER_BONUS
 )
+
+# This is a forward declaration to resolve a circular import.
+# The actual Checkers class will be imported inside the function.
+class Checkers:
+    pass
 
 def evaluate_board_static(board, turn_to_move):
     """
     Calculates the static evaluation of a given board state.
     This is the "brain" of the AI.
     """
-    # Create a temporary, lightweight game state to access move generation
-    gs = Checkers(board, turn_to_move, load_resources=False)
+    from .checkers_game import Checkers as GameLogic
+    
+    gs = GameLogic(board, turn_to_move, load_resources=False)
     red_moves = gs.get_all_possible_moves(RED)
     white_moves = gs.get_all_possible_moves(WHITE)
     
@@ -33,7 +39,7 @@ def evaluate_board_static(board, turn_to_move):
             
             # 2. Positional Score (Only in quiet, non-tactical positions)
             if not is_tactical:
-                if not piece.isupper(): # Man positional logic
+                if not piece.isupper():
                     acf_pos = COORD_TO_ACF.get((r, c))
                     if piece == RED and acf_pos in {1, 3}:
                         pos_score += BACK_ROW_CORNER_BONUS
