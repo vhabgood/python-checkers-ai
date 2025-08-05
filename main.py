@@ -1,4 +1,3 @@
-# main.py
 import pygame
 import os
 import copy
@@ -8,8 +7,6 @@ from datetime import datetime
 import random
 from engine.constants import *
 from engine.checkers_game import Checkers
-
-# --- PART 2: THE PYGAME GUI (DEFINITIVE, CORRECTED VERSION) ---
 
 class CheckersGUI:
     MAX_DEV_HIGHLIGHTS = 3
@@ -181,7 +178,142 @@ class CheckersGUI:
             text_surf = self.font_medium.render(text, True, COLOR_TEXT)
             self.screen.blit(text_surf, text_surf.get_rect(center=rect.center))
 
-    # ... (The rest of the CheckersGUI class is unchanged) ...
+    def _wrap_text(self, text, font, max_width):
+        lines, words = [], text.split(' ');
+        if not words: return []
+        current_line = words[0]
+        for word in words[1:]:
+            if font.size(current_line + ' ' + word)[0] <= max_width: current_line += ' ' + word
+            else: lines.append(current_line); current_line = word
+        lines.append(current_line)
+        return lines
+
+    def _draw_game_screen(self, mouse_pos):
+        self.screen.fill(COLOR_BG); self._draw_board(); self._draw_last_move_highlight()
+        if self.developer_mode and (self.is_ai_thinking or self.ai_analysis_complete_paused): self._draw_dev_mode_highlights()
+        self._draw_pieces(); self._draw_valid_moves(); self._draw_info_panel(mouse_pos); self._draw_menu_bar(mouse_pos)
+
+    def _draw_board(self):
+        for r_l in range(ROWS):
+            for c_l in range(COLS):
+                r_d, c_d = self._get_display_coords(r_l, c_l)
+                color = COLOR_LIGHT if (r_d + c_d) % 2 == 0 else COLOR_DARK
+                pygame.draw.rect(self.screen, color, (c_d*SQUARE_SIZE, r_d*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+                if (r_l + c_l) % 2 == 1:
+                    num_text = self.font_small.render(str(COORD_TO_ACF.get((r_l, c_l), '')), True, COLOR_LIGHT)
+                    self.screen.blit(num_text, (c_d*SQUARE_SIZE+5, r_d*SQUARE_SIZE+5))
+
+    def _draw_last_move_highlight(self):
+        if not self.last_move: return
+        s = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA); s.fill(COLOR_LAST_MOVE)
+        for r_l, c_l in self.last_move:
+            r_d, c_d = self._get_display_coords(r_l, c_l)
+            self.screen.blit(s, (c_d*SQUARE_SIZE, r_d*SQUARE_SIZE))
+
+    def _draw_dev_mode_highlights(self):
+        with self.ai_analysis_lock: path = self.ai_current_path
+        if not path: return
+        for i, (start, end) in enumerate(path[:self.MAX_DEV_HIGHLIGHTS]):
+            color = COLOR_DEV_PRIMARY if i == 0 else COLOR_DEV_SECONDARY
+            s = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA); s.fill(color)
+            for r_l, c_l in [start, end]:
+                r_d, c_d = self._get_display_coords(r_l, c_l)
+                self.screen.blit(s, (c_d*SQUARE_SIZE, r_d*SQUARE_SIZE))
+
+    def _draw_pieces(self):
+        radius = SQUARE_SIZE//2 - 8; self.piece_counts = [0,0,0,0]
+        for r_l in range(ROWS):
+            for c_l in range(COLS):
+                piece = self.game.board[r_l][c_l]
+                if piece != EMPTY:
+                    r_d, c_d = self._get_display_coords(r_l, c_l)
+                    cx, cy = c_d*SQUARE_SIZE + SQUARE_SIZE//2, r_d*SQUARE_SIZE + SQUARE_SIZE//2
+                    if (r_l, c_l) == self.selected_piece: pygame.draw.circle(self.screen, COLOR_SELECTED, (cx, cy), radius + 4)
+                    pygame.draw.circle(self.screen, COLOR_RED_P if piece.lower() == RED else COLOR_WHITE_P, (cx, cy), radius)
+                    if piece.isupper(): pygame.draw.circle(self.screen, COLOR_CROWN, (cx, cy), radius // 2)
+                    idx = {'r':0, 'R':1, 'w':2, 'W':3}[piece]
+                    self.piece_counts[idx] += 1
+
+    def _draw_valid_moves(self):
+        if not self.valid_moves: return
+        s = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA); pygame.draw.circle(s, COLOR_VALID, (SQUARE_SIZE//2, SQUARE_SIZE//2), 15)
+        for r_l, c_l in self.valid_moves.keys():
+            r_d, c_d = self._get_display_coords(r_l, c_l)
+            self.screen.blit(s, (c_d*SQUARE_SIZE, r_d*SQUARE_SIZE))
+
+    def _draw_info_panel(self, mouse_pos):
+        panel_x, y = BOARD_SIZE+20, 20; panel_re = BOARD_SIZE+INFO_WIDTH-20
+        self.screen.blit(self.font_medium.render("CHECKERS", True, COLOR_LIGHT), (panel_x, y)); y+=40
+        if self.game.winner: txt = f"Winner: {PLAYER_NAMES[self.game.winner]}!"; surf = self.font_large.render(txt,True,COLOR_CROWN)
+        else: txt = f"Turn: {PLAYER_NAMES[self.game.turn]}"; surf = self.font_medium.render(txt,True,COLOR_WHITE_P if self.game.turn==WHITE else COLOR_RED_P)
+        self.screen.blit(surf, (panel_x, y)); y+=40
+        score = self.game.evaluate_board_static(self.game.board,self.game.turn)/self.game.MATERIAL_MULTIPLIER
+        adv = f"+{score:.2f} (Red Adv.)" if score>0.05 else f"{score:.2f} (White Adv.)" if score<-0.05 else "Even"
+        self.screen.blit(self.font_small.render(f"Positional Score: {adv}",True,COLOR_LIGHT), (panel_x, y)); y+=25
+        rm, rk, wm, wk = self.piece_counts
+        self.screen.blit(self.font_small.render(f"Red: {rm} men, {rk} kings",True,COLOR_RED_P), (panel_x,y)); y+=20
+        self.screen.blit(self.font_small.render(f"White: {wm} men, {wk} kings",True,COLOR_WHITE_P), (panel_x,y)); y+=25
+        self.screen.blit(self.font_small.render(f"AI Depth: {self.ai_depth}",True,COLOR_LIGHT), (panel_x, y)); y+=30
+        is_dis = self.is_ai_thinking or self.ai_analysis_complete_paused
+        for r, t in [(self.depth_minus_rect, "-"), (self.depth_plus_rect, "+")]:
+            color = COLOR_BUTTON_HOVER if r.collidepoint(mouse_pos) and not is_dis else COLOR_BUTTON_DISABLED if is_dis else COLOR_BUTTON
+            pygame.draw.rect(self.screen, color, r); self.screen.blit(self.font_medium.render(t,True,COLOR_TEXT), r.move(10 if t=='-' else 7, 1))
+        y+=10
+        
+        is_ai_active = self.is_ai_thinking or self.ai_analysis_complete_paused
+        if is_ai_active:
+            if self.ai_analysis_complete_paused:
+                self.screen.blit(self.font_small.render("Analysis Complete!", True, COLOR_CROWN), (panel_x, y)); y+=20
+                self.screen.blit(self.font_small.render("Press SPACE to make move.", True, COLOR_LIGHT), (panel_x, y)); y+=25
+            else: # is_ai_thinking
+                self.screen.blit(self.font_small.render("Thinking...", True, COLOR_LIGHT), (panel_x, y)); y+=45
+
+            if self.developer_mode:
+                with self.ai_analysis_lock: moves, count = self.ai_all_evaluated_moves, self.ai_eval_count
+                self.screen.blit(self.font_small.render(f"Positions: {count:,}", True, COLOR_LIGHT), (panel_x, y)); y+=25
+                self.screen.blit(self.font_small.render("Principal Variations:", True, COLOR_LIGHT), (panel_x, y)); y+=25
+                list_y_start, line_h = y, 22
+                clip_area = pygame.Rect(panel_x, list_y_start, INFO_WIDTH - 30, BOARD_SIZE - list_y_start - 50)
+                for r_scroll, t in [(self.eval_scroll_up_rect, "^"), (self.eval_scroll_down_rect, "v")]:
+                    pygame.draw.rect(self.screen, COLOR_BUTTON_HOVER if r_scroll.collidepoint(mouse_pos) else COLOR_BUTTON, r_scroll)
+                    self.screen.blit(self.font_small.render(t,True,COLOR_TEXT), r_scroll.move(12, 4))
+                self.screen.set_clip(clip_area); current_y = list_y_start
+                for i, move_data in enumerate(moves):
+                    if i < self.eval_scroll_offset or current_y > clip_area.bottom: continue
+                    path = move_data['path']; path_str_parts = []
+                    j=0
+                    while j < len(path):
+                        start, end = path[j]
+                        if abs(start[0] - end[0]) != 2: # Simple move
+                            path_str_parts.append(f"{coord_to_acf_notation(start)}-{coord_to_acf_notation(end)}"); j+=1
+                        else: # Jump sequence
+                            jump_seq = [coord_to_acf_notation(start), coord_to_acf_notation(end)]
+                            while (j + 1 < len(path)) and (path[j+1][0] == path[j][1]) and (abs(path[j+1][0][0]-path[j+1][1][0])==2):
+                                j+=1; jump_seq.append(coord_to_acf_notation(path[j][1]))
+                            path_str_parts.append("x".join(jump_seq)); j+=1
+                    path_str = " -> ".join(path_str_parts)
+
+                    score_str = f"({move_data['score']/self.game.MATERIAL_MULTIPLIER:+.2f})"; color = COLOR_CROWN if i==0 else COLOR_LIGHT
+                    score_surf = self.font_small.render(score_str, True, color); score_rect = score_surf.get_rect(topright=(panel_re, current_y))
+                    for k, line in enumerate(self._wrap_text(f"{i+1}. {path_str}", self.font_small, clip_area.width - score_rect.width - 15)):
+                        if current_y > clip_area.bottom: break
+                        self.screen.blit(self.font_small.render(line, True, color), (panel_x, current_y))
+                        if k==0: self.screen.blit(score_surf, score_rect)
+                        current_y += line_h
+                self.screen.set_clip(None)
+
+    def _draw_menu_bar(self, mouse_pos):
+        pygame.draw.rect(self.screen, COLOR_BG, (0, BOARD_SIZE, WIDTH, MENU_BAR_HEIGHT))
+        for text, rect in self.buttons.items():
+            is_clickable = True
+            if text not in ["Force Move", "Dev Mode", "Reset"] and (self.is_ai_thinking or self.ai_analysis_complete_paused):
+                is_clickable = False
+            
+            color = COLOR_BUTTON_HOVER if rect.collidepoint(mouse_pos) and is_clickable else (COLOR_BUTTON if is_clickable else COLOR_BUTTON_DISABLED)
+            pygame.draw.rect(self.screen, color, rect)
+            disp_text = "Dev: ON" if text == 'Dev Mode' and self.developer_mode else text
+            text_surf = self.font_small.render(disp_text, True, COLOR_TEXT)
+            self.screen.blit(text_surf, text_surf.get_rect(center=rect.center))
 
 if __name__ == '__main__':
     gui = CheckersGUI()
