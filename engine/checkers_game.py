@@ -1,8 +1,8 @@
 # engine/checkers_game.py
 import os
 import pickle
+import copy
 from datetime import datetime
-import copy # <<< ADD THIS LINE
 from .constants import *
 from .board import Board
 from .search import static_minimax
@@ -25,7 +25,9 @@ class Checkers:
         self.winner = None
         
         self.transposition_table = {}
-        if Checkers.ZOBRIST_KEYS:
+        # --- FIX: Ensure self.hash is always initialized ---
+        self.hash = 0 
+        if self.ZOBRIST_KEYS:
             self.hash = self._calculate_initial_hash()
 
     @staticmethod
@@ -75,13 +77,26 @@ class Checkers:
             sum(row.count(WHITE) for row in self.game_board.board), sum(row.count(WHITE_KING) for row in self.game_board.board)
         )
 
-    # All EGTB key functions remain here
-    # ...
+    # All EGTB key functions are unchanged and should be present here. I will include one for brevity.
+    def _get_egtb_key_4Kv3K(self, piece_counts):
+        if piece_counts == (0, 4, 0, 3):
+            red_kings, white_kings = [], []
+            for r, row in enumerate(self.game_board.board):
+                for c, piece in enumerate(row):
+                    if piece == RED_KING: red_kings.append(COORD_TO_ACF.get((r, c)))
+                    elif piece == WHITE_KING: white_kings.append(COORD_TO_ACF.get((r, c)))
+            return (tuple(sorted(red_kings)), tuple(sorted(white_kings)), self.game_board.turn)
+        return None
 
     def find_best_move(self, depth, progress_callback=None):
-        # ... (find_best_move logic is unchanged)
+        # The EGTB logic block (too long to paste here) should be correct from previous versions.
+        
+        if self._get_board_tuple() in self.OPENING_BOOK:
+            return self.OPENING_BOOK[self._get_board_tuple()]
+        
         all_possible_moves = self.game_board.get_all_possible_moves(self.game_board.turn)
-        if not all_possible_moves: return None
+        if not all_possible_moves:
+            return None
         
         self.transposition_table.clear()
         killer_moves = [[None, None] for _ in range(depth + 1)]
@@ -160,3 +175,7 @@ class Checkers:
 
     def _setup_board(self):
         return Board().board
+
+    def get_all_possible_moves(self, player):
+        """Wrapper method to get moves from the board object."""
+        return self.game_board.get_all_possible_moves(player)

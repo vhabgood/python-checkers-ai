@@ -7,6 +7,7 @@ from datetime import datetime
 import random
 from engine.constants import *
 from engine.checkers_game import Checkers
+from engine.evaluation import evaluate_board_static
 
 class CheckersGUI:
     MAX_DEV_HIGHLIGHTS = 3
@@ -66,10 +67,10 @@ class CheckersGUI:
         return (7-r, 7-c) if self.board_is_flipped else (r, c)
     def _handle_move(self, start, end):
         self.ai_is_paused = False
-        if not self.game.forced_jumps: self.game_state_history.append(copy.deepcopy(self.game))
+        if not self.game.game_board.forced_jumps: self.game_state_history.append(copy.deepcopy(self.game))
         self.game.perform_move(start, end)
         self.last_move = (start, end)
-        self.selected_piece = self.game.forced_jumps[0][0] if self.game.forced_jumps else None
+        self.selected_piece = self.game.game_board.forced_jumps[0][0] if self.game.game_board.forced_jumps else None
         self._update_valid_moves()
     def _sync_gui_to_game_state(self):
         self.game.winner = self.game.check_win_condition()
@@ -79,7 +80,7 @@ class CheckersGUI:
     def _update_valid_moves(self):
         self.valid_moves = {}
         if not self.game: return
-        possible = self.game.forced_jumps or (self.game.get_all_possible_moves(self.game.turn) if self.selected_piece else [])
+        possible = self.game.game_board.forced_jumps or (self.game.game_board.get_all_possible_moves(self.game.game_board.turn) if self.selected_piece else [])
         if self.selected_piece: possible = [m for m in possible if m[0] == self.selected_piece]
         for start, end in possible: self.valid_moves[end] = start
     def main_loop(self):
@@ -130,9 +131,9 @@ class CheckersGUI:
                     elif self.depth_plus_rect.collidepoint(event.pos): self.ai_depth = min(12, self.ai_depth + 1)
                     elif not self.game.winner:
                         row, col = self._get_logical_coords_from_mouse(event.pos)
-                        if self.game.turn == self.human_player_color and row is not None:
+                        if self.game.game_board.turn == self.human_player_color and row is not None:
                             if (row, col) in self.valid_moves: self._handle_move(self.valid_moves[(row, col)], (row, col))
-                            elif not self.game.forced_jumps and self.game.board[row][col].lower() == self.game.turn:
+                            elif not self.game.game_board.forced_jumps and self.game.game_board.board[row][col].lower() == self.game.game_board.turn:
                                 self.selected_piece = (row, col); self._update_valid_moves()
                             else: self.selected_piece = None; self._update_valid_moves()
             
@@ -142,13 +143,13 @@ class CheckersGUI:
                 if not self.game.winner: self.game.winner = self.game.check_win_condition()
                 if self.is_ai_thinking and self.ai_move_result != "THINKING":
                     self.is_ai_thinking = False
-                    if self.developer_mode or self.game.turn != self.human_player_color: self.ai_analysis_complete_paused = True
+                    if self.developer_mode or self.game.game_board.turn != self.human_player_color: self.ai_analysis_complete_paused = True
                     else:
                         if self.ai_move_result: self._handle_move(self.ai_move_result[0], self.ai_move_result[1])
                         self.ai_move_result = None
                 
-                all_moves = self.game.get_all_possible_moves(self.game.turn) if self.game else []
-                is_ai_turn = self.game and self.game.turn != self.human_player_color
+                all_moves = self.game.game_board.get_all_possible_moves(self.game.game_board.turn) if self.game else []
+                is_ai_turn = self.game and self.game.game_board.turn != self.human_player_color
                 if is_ai_turn and all_moves and not (self.is_ai_thinking or self.ai_analysis_complete_paused or self.game.winner or self.ai_is_paused):
                     if len(all_moves) == 1:
                         self._handle_move(all_moves[0][0], all_moves[0][1])
@@ -224,7 +225,7 @@ class CheckersGUI:
         radius = SQUARE_SIZE//2 - 8; self.piece_counts = [0,0,0,0]
         for r_l in range(ROWS):
             for c_l in range(COLS):
-                piece = self.game.board[r_l][c_l]
+                piece = self.game.game_board.board[r_l][c_l]
                 if piece != EMPTY:
                     r_d, c_d = self._get_display_coords(r_l, c_l)
                     cx, cy = c_d*SQUARE_SIZE + SQUARE_SIZE//2, r_d*SQUARE_SIZE + SQUARE_SIZE//2
@@ -245,9 +246,9 @@ class CheckersGUI:
         panel_x, y = BOARD_SIZE+20, 20; panel_re = BOARD_SIZE+INFO_WIDTH-20
         self.screen.blit(self.font_medium.render("CHECKERS", True, COLOR_LIGHT), (panel_x, y)); y+=40
         if self.game.winner: txt = f"Winner: {PLAYER_NAMES[self.game.winner]}!"; surf = self.font_large.render(txt,True,COLOR_CROWN)
-        else: txt = f"Turn: {PLAYER_NAMES[self.game.turn]}"; surf = self.font_medium.render(txt,True,COLOR_WHITE_P if self.game.turn==WHITE else COLOR_RED_P)
+        else: txt = f"Turn: {PLAYER_NAMES[self.game.game_board.turn]}"; surf = self.font_medium.render(txt,True,COLOR_WHITE_P if self.game.game_board.turn==WHITE else COLOR_RED_P)
         self.screen.blit(surf, (panel_x, y)); y+=40
-        score = self.game.evaluate_board_static(self.game.board,self.game.turn)/self.game.MATERIAL_MULTIPLIER
+        score = evaluate_board_static(self.game.game_board.board, self.game.game_board.turn)/MATERIAL_MULTIPLIER
         adv = f"+{score:.2f} (Red Adv.)" if score>0.05 else f"{score:.2f} (White Adv.)" if score<-0.05 else "Even"
         self.screen.blit(self.font_small.render(f"Positional Score: {adv}",True,COLOR_LIGHT), (panel_x, y)); y+=25
         rm, rk, wm, wk = self.piece_counts
@@ -293,7 +294,7 @@ class CheckersGUI:
                             path_str_parts.append("x".join(jump_seq)); j+=1
                     path_str = " -> ".join(path_str_parts)
 
-                    score_str = f"({move_data['score']/self.game.MATERIAL_MULTIPLIER:+.2f})"; color = COLOR_CROWN if i==0 else COLOR_LIGHT
+                    score_str = f"({move_data['score']/MATERIAL_MULTIPLIER:+.2f})"; color = COLOR_CROWN if i==0 else COLOR_LIGHT
                     score_surf = self.font_small.render(score_str, True, color); score_rect = score_surf.get_rect(topright=(panel_re, current_y))
                     for k, line in enumerate(self._wrap_text(f"{i+1}. {path_str}", self.font_small, clip_area.width - score_rect.width - 15)):
                         if current_y > clip_area.bottom: break
