@@ -9,6 +9,11 @@ from engine.constants import *
 from engine.checkers_game import Checkers
 
 class CheckersGUI:
+    """
+    Implements the Pygame-based graphical interface for the Checkers game.
+    This class handles drawing the board, pieces, highlights, and other UI elements.
+    It also manages user input events and coordinates the game flow.
+    """
     MAX_DEV_HIGHLIGHTS = 3
     def __init__(self):
         pygame.init()
@@ -25,7 +30,9 @@ class CheckersGUI:
             with self.loading_lock:
                 self.loading_status_message = msg
         
-        Checkers.load_all_resources(update_status)
+        # Access Checkers.load_all_resources through a Checkers instance
+        temp_game = Checkers()
+        temp_game.load_all_resources(update_status)
         self.reset_game_state(first_load=True)
         self.loading_state = 'side_selection'
 

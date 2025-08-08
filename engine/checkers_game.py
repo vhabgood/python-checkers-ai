@@ -1,6 +1,6 @@
 # engine/checkers_game.py
 
-class Checkers
+class Checkers:
 # Replace the method to address the known issue
 
  def find_best_move(self, depth, progress_callback=None):
