@@ -18,12 +18,12 @@ class Checkers:
     def __init__(self, board=None, turn=None, load_resources=True):
         if load_resources:
             self.load_all_resources()
-        
+
         self.game_board = Board(board, turn)
         self.move_history = []
         self.current_move_path = []
         self.winner = None
-        
+
         self.transposition_table = {}
         # --- FIX: Ensure self.hash is always initialized ---
         self.hash = 0 
@@ -34,12 +34,12 @@ class Checkers:
     def load_all_resources(status_callback=None):
         def update(msg):
             if status_callback: status_callback(msg)
-        
+
         update("Loading bundled resources...")
         if os.path.exists(Checkers.RESOURCES_FILENAME):
             with open(Checkers.RESOURCES_FILENAME, "rb") as f:
                 all_resources = pickle.load(f)
-            
+
             for key, value in all_resources.items():
                 setattr(Checkers, key, value)
             update("All resources loaded successfully.")
@@ -62,12 +62,12 @@ class Checkers:
         piece = self.game_board.board[end[0]][end[1]]
         start_acf, end_acf = COORD_TO_ACF[start], COORD_TO_ACF[end]
         original_piece = piece.lower() if promotion else piece
-        
+
         self.hash ^= self.ZOBRIST_KEYS.get((original_piece, start_acf), 0)
         self.hash ^= self.ZOBRIST_KEYS.get((piece, end_acf), 0)
         if captured_piece: self.hash ^= self.ZOBRIST_KEYS.get((captured_piece, COORD_TO_ACF[captured_pos]), 0)
         self.hash ^= self.ZOBRIST_KEYS.get('turn', 0)
-    
+
     def _get_board_tuple(self):
         return tuple(map(tuple, self.game_board.board))
 
@@ -87,11 +87,7 @@ class Checkers:
                     elif piece == WHITE_KING: white_kings.append(COORD_TO_ACF.get((r, c)))
             return (tuple(sorted(red_kings)), tuple(sorted(white_kings)), self.game_board.turn)
         return None
-def find_best_move(self, depth, progress_callback=None):
-        piece_counts = self._get_piece_counts()
-        total_pieces = sum(piece_counts)
-
-        if total_pieces <= 7:
+  if total_pieces <= 7:
             db_checks = [
                 (self.EGTB_2K1Mv2K1M, self._get_egtb_key_2K1Mv2K1M, "2K1M v 2K1M"),
                 (self.EGTB_3v3_KINGS, self._get_egtb_key_3Kv3K, "3K v 3K"),
@@ -162,14 +158,14 @@ def find_best_move(self, depth, progress_callback=None):
         new_game.hash = self.hash
         new_game.transposition_table = self.transposition_table
         return new_game
-        
+
     def perform_move(self, start, end):
         if not self.game_board.forced_jumps:
             self.current_move_path = [coord_to_acf_notation(start)]
-        
+
         further_jumps, _, _, _ = self.game_board.perform_move(start, end)
         self.current_move_path.append(coord_to_acf_notation(end))
-        
+
         if not further_jumps:
             is_jump = any(abs(ACF_TO_COORD[int(self.current_move_path[i])][0] - ACF_TO_COORD[int(self.current_move_path[i+1])][0])==2 for i in range(len(self.current_move_path)-1))
             self._finalize_turn(is_jump)
@@ -188,10 +184,10 @@ def find_best_move(self, depth, progress_callback=None):
     def check_win_condition(self):
         if not self.game_board.get_all_possible_moves(self.game_board.turn):
             return WHITE if self.game_board.turn == RED else RED
-        
+
         red_pieces = any(p.lower() == RED for r in self.game_board.board for p in r)
         white_pieces = any(p.lower() == WHITE for r in self.game_board.board for p in r)
-        
+
         if not red_pieces: return WHITE
         if not white_pieces: return RED
         return None
