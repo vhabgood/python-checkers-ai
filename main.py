@@ -1,4 +1,3 @@
-# main.py
 import pygame
 import os
 import copy
@@ -14,9 +13,7 @@ class CheckersGUI:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT)); pygame.display.set_caption('American Checkers')
-        # --- FIX: Correct font initialization ---
         self.font_small, self.font_medium, self.font_large = pygame.font.SysFont('Arial', 18), pygame.font.SysFont('Arial', 24, bold=True), pygame.font.SysFont('Arial', 40, bold=True)
-        # --- END FIX ---
         self.game = None
         self.loading_state = 'loading'
         self.loading_status_message = "Initializing..."
@@ -82,7 +79,7 @@ class CheckersGUI:
     def _update_valid_moves(self):
         self.valid_moves = {}
         if not self.game: return
-        possible = self.game.forced_jumps or (self.game.game_board.get_all_possible_moves(self.game.game_board.turn) if self.selected_piece else [])
+        possible = self.game.forced_jumps or (self.game.get_all_possible_moves(self.game.game_board.turn) if self.selected_piece else [])
         if self.selected_piece: possible = [m for m in possible if m[0] == self.selected_piece]
         for start, end in possible: self.valid_moves[end] = start
     def main_loop(self):
@@ -135,7 +132,7 @@ class CheckersGUI:
                         row, col = self._get_logical_coords_from_mouse(event.pos)
                         if self.game.game_board.turn == self.human_player_color and row is not None:
                             if (row, col) in self.valid_moves: self._handle_move(self.valid_moves[(row, col)], (row, col))
-                            elif not self.game.game_board.forced_jumps and self.game.game_board.board[row][col].lower() == self.game.game_board.turn:
+                            elif not self.game.forced_jumps and self.game.game_board.board[row][col].lower() == self.game.game_board.turn:
                                 self.selected_piece = (row, col); self._update_valid_moves()
                             else: self.selected_piece = None; self._update_valid_moves()
             
@@ -190,7 +187,6 @@ class CheckersGUI:
             else: lines.append(current_line); current_line = word
         lines.append(current_line)
         return lines
-
     def _draw_game_screen(self, mouse_pos):
         self.screen.fill(COLOR_BG); self._draw_board(); self._draw_last_move_highlight()
         if self.developer_mode and (self.is_ai_thinking or self.ai_analysis_complete_paused): self._draw_dev_mode_highlights()
@@ -225,9 +221,9 @@ class CheckersGUI:
 
     def _draw_pieces(self):
         radius = SQUARE_SIZE//2 - 8; self.piece_counts = [0,0,0,0]
-        for r_logic in range(ROWS):
-            for c_logic in range(COLS):
-                piece = self.game.board[r_logic][c_logic]
+        for r_l in range(ROWS):
+            for c_l in range(COLS):
+                piece = self.game.game_board.board[r_l][c_l]
                 if piece != EMPTY:
                     r_disp, c_disp = self._get_display_coords(r_logic, c_logic)
                     cx, cy = c_disp * SQUARE_SIZE + SQUARE_SIZE // 2, r_disp * SQUARE_SIZE + SQUARE_SIZE // 2
@@ -252,13 +248,13 @@ class CheckersGUI:
         if self.game.winner: text = f"Winner: {PLAYER_NAMES[self.game.winner]}!"; surf = self.font_large.render(text, True, COLOR_CROWN)
         else: text = f"Turn: {PLAYER_NAMES[self.game.game_board.turn]}"; surf = self.font_medium.render(text, True, COLOR_WHITE_P if self.game.game_board.turn == WHITE else COLOR_RED_P)
         self.screen.blit(surf, (panel_x, y_pos)); y_pos += 40
-        score = Checkers.evaluate_board_static(self.game.board,self.game.turn)/Checkers.MATERIAL_MULTIPLIER
-        adv = f"+{score:.2f} (Red Adv.)" if score>0.05 else f"{score:.2f} (White Adv.)" if score<-0.05 else "Even"
+        score = Checkers.evaluate_board_static(self.game.game_board.board, self.game.game_board.turn)/Checkers.MATERIAL_MULTIPLIER
+        adv = f"+{score:.2f} (Red Adv.)" if score > 0.05 else f"{score:.2f} (White Adv.)" if score < -0.05 else "Even"
         self.screen.blit(self.font_small.render(f"Positional Score: {adv}", True, COLOR_LIGHT), (panel_x, y_pos)); y_pos += 25
         rm, rk, wm, wk = self.piece_counts
         self.screen.blit(self.font_small.render(f"Red: {rm} men, {rk} kings", True, COLOR_RED_P), (panel_x, y_pos)); y_pos += 20
         self.screen.blit(self.font_small.render(f"White: {wm} men, {wk} kings", True, COLOR_WHITE_P), (panel_x, y_pos)); y_pos += 25
-        self.screen.blit(self.font_small.render(f"AI Depth: {self.ai_depth}", True, COLOR_LIGHT), (panel_x, y_pos)); y_pos += 30
+        self.screen.blit(self.font_small.render(f"AI Depth: {self.ai_depth}", True, COLOR_LIGHT), (panel_x, y_pos)); y_pos += 10
         is_dis = self.is_ai_thinking or self.ai_analysis_complete_paused
         for r, t in [(self.depth_minus_rect, "-"), (self.depth_plus_rect, "+")]:
             color = COLOR_BUTTON_HOVER if r.collidepoint(mouse_pos) and not is_dis else COLOR_BUTTON_DISABLED if is_dis else COLOR_BUTTON
@@ -279,11 +275,12 @@ class CheckersGUI:
                 self.screen.blit(self.font_small.render("Principal Variations:", True, COLOR_LIGHT), (panel_x, y_pos)); y_pos += 25
                 list_y_start, line_h = y_pos, 22
                 clipping_area = pygame.Rect(panel_x, list_y_start, INFO_WIDTH - 30, BOARD_SIZE - list_y_start - 50)
-                self.screen.set_clip(clipping_area)
-                current_y = list_y_start
+                for r_scroll, t in [(self.eval_scroll_up_rect, "^"), (self.eval_scroll_down_rect, "v")]:
+                    pygame.draw.rect(self.screen, COLOR_BUTTON_HOVER if r_scroll.collidepoint(mouse_pos) else COLOR_BUTTON, r_scroll)
+                    self.screen.blit(self.font_small.render(t,True,COLOR_TEXT), r_scroll.move(12, 4))
+                self.screen.set_clip(clipping_area); current_y = list_y_start
                 for i, move_data in enumerate(moves):
-                    if i < self.eval_scroll_offset: continue
-                    if current_y > clipping_area.bottom: break
+                    if i < self.eval_scroll_offset or current_y > clipping_area.bottom: continue
                     path = move_data['path']; path_str_parts = []
                     j=0
                     while j < len(path):
