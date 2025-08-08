@@ -132,7 +132,4 @@ def static_minimax(game, board, turn, depth, alpha, beta, maximizing_player, eva
         flag = 'EXACT' if min_eval > alpha and min_eval < beta else 'UPPERBOUND' if min_eval <= alpha else 'LOWERBOUND'
         game.transposition_table[game.hash] = {'score': min_eval, 'depth': depth, 'flag': flag, 'path': best_path}
         return min_eval, best_path
-Use code with caution.
-Python
-110.8s
 

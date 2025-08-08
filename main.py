@@ -197,13 +197,13 @@ class CheckersGUI:
         self._draw_pieces(); self._draw_valid_moves(); self._draw_info_panel(mouse_pos); self._draw_menu_bar(mouse_pos)
 
     def _draw_board(self):
-        for r_l in range(ROWS):
-            for c_l in range(COLS):
-                r_disp, c_disp = self._get_display_coords(r_l, c_l)
+        for r_logic in range(ROWS):
+            for c_logic in range(COLS):
+                r_disp, c_disp = self._get_display_coords(r_logic, c_logic)
                 color = COLOR_LIGHT if (r_disp + c_disp) % 2 == 0 else COLOR_DARK
                 pygame.draw.rect(self.screen, color, (c_disp*SQUARE_SIZE, r_disp*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
                 if (r_logic + c_logic) % 2 == 1:
-                    num_text = self.font_small.render(str(COORD_TO_ACF.get((r_l, c_l), '')), True, COLOR_LIGHT)
+                    num_text = self.font_small.render(str(COORD_TO_ACF.get((r_logic, c_logic), '')), True, COLOR_LIGHT)
                     self.screen.blit(num_text, (c_disp * SQUARE_SIZE + 5, r_disp * SQUARE_SIZE + 5))
 
     def _draw_last_move_highlight(self):
