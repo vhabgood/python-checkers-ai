@@ -20,6 +20,8 @@ class CheckersGUI:
         self.loading_status_message = "Initializing..."
         self.loading_lock = threading.Lock()
         threading.Thread(target=self._load_resources_worker, daemon=True).start()
+        self.play_red_rect = pygame.Rect(WIDTH//2 - 140, HEIGHT//2 - 25, 120, 50)
+        self.play_white_rect = pygame.Rect(WIDTH//2 + 20, HEIGHT//2 - 25, 120, 50)
         
     def _load_resources_worker(self):
         def update_status(msg):
@@ -94,7 +96,7 @@ class CheckersGUI:
         possible = self.game.game_board.forced_jumps or (self.game.get_all_possible_moves(self.game.game_board.turn) if self.selected_piece else [])
         if self.selected_piece: possible = [m for m in possible if m[0] == self.selected_piece]
         for start, end in possible: self.valid_moves[end] = start
-    def main_loop(self):
+def main_loop(self):
         running, clock = True, pygame.time.Clock()
         while running:
             mouse_pos = pygame.mouse.get_pos()
@@ -114,7 +116,7 @@ class CheckersGUI:
                     self.ai_analysis_complete_paused, self.ai_move_result = False, None
                 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if self.buttons["Force Move"].collidepoint(event.pos):
+                    if self.buttons["Force Move"].collidepoint(mouse_pos):
                         if self.is_ai_thinking:
                             with self.ai_analysis_lock:
                                 if self.ai_all_evaluated_moves: self.ai_move_result = self.ai_all_evaluated_moves[0]['move']
@@ -122,8 +124,8 @@ class CheckersGUI:
                         continue
 
                     if self.is_ai_thinking or self.ai_analysis_complete_paused:
-                        if self.eval_scroll_up_rect.collidepoint(event.pos): self.eval_scroll_offset = max(0, self.eval_scroll_offset - 1)
-                        elif self.eval_scroll_down_rect.collidepoint(event.pos): self.eval_scroll_offset += 1
+                        if self.eval_scroll_up_rect.collidepoint(mouse_pos): self.eval_scroll_offset=max(0,self.eval_scroll_offset-1)
+                        elif self.eval_scroll_down_rect.collidepoint(mouse_pos): self.eval_scroll_offset+=1
                         continue
                     
                     if self.buttons["Dev Mode"].collidepoint(event.pos): self.developer_mode = not self.developer_mode
@@ -141,7 +143,7 @@ class CheckersGUI:
                     elif self.depth_minus_rect.collidepoint(event.pos): self.ai_depth = max(1, self.ai_depth - 1)
                     elif self.depth_plus_rect.collidepoint(event.pos): self.ai_depth = min(12, self.ai_depth + 1)
                     elif not self.game.winner:
-                        row, col = self._get_logical_coords_from_mouse(event.pos)
+                        row, col = self._get_logical_coords_from_mouse(mouse_pos)
                         if self.game.game_board.turn == self.human_player_color and row is not None:
                             if (row, col) in self.valid_moves: self._handle_move(self.valid_moves[(row, col)], (row, col))
                             elif not self.game.game_board.forced_jumps and self.game.game_board.board[row][col].lower() == self.game.game_board.turn:
@@ -339,4 +341,4 @@ class CheckersGUI:
 if __name__ == '__main__':
     gui = CheckersGUI()
     gui.main_loop()
-Use code with cautio
+
