@@ -71,7 +71,7 @@ class CheckersGUI:
         if self.is_ai_thinking or self.ai_analysis_complete_paused or self.game.winner or self.ai_is_paused: return
         self.is_ai_thinking, self.ai_move_result, self.eval_scroll_offset = True, "THINKING", 0
         with self.ai_analysis_lock: self.ai_all_evaluated_moves, self.ai_eval_count, self.ai_current_path = [], 0, []
-        thread = threading.Thread(target=self._ai_worker, daemon=True).start()
+        threading.Thread(target=self._ai_worker, daemon=True).start()
     def _get_display_coords(self, r, c): return (7-r, 7-c) if self.board_is_flipped else (r, c)
     def _get_logical_coords_from_mouse(self, pos):
         x, y = pos
@@ -96,7 +96,7 @@ class CheckersGUI:
         possible = self.game.game_board.forced_jumps or (self.game.get_all_possible_moves(self.game.game_board.turn) if self.selected_piece else [])
         if self.selected_piece: possible = [m for m in possible if m[0] == self.selected_piece]
         for start, end in possible: self.valid_moves[end] = start
-def main_loop(self):
+    def main_loop(self):
         running, clock = True, pygame.time.Clock()
         while running:
             mouse_pos = pygame.mouse.get_pos()
@@ -162,13 +162,8 @@ def main_loop(self):
                         self.ai_move_result = None
                 
                 all_moves = self.game.get_all_possible_moves(self.game.game_board.turn) if self.game else []
-                is_ai_turn = self.game and self.game.game_board.turn != self.human_player_color and not self.ai_is_paused
-                if is_ai_turn and all_moves and not (self.is_ai_thinking or self.ai_analysis_complete_paused or self.game.winner):
-                    if len(all_moves) == 1:
-                        self._handle_move(all_moves[0][0], all_moves[0][1])
-                    else: self._start_ai_move()
-                self._draw_game_screen(mouse_pos)
-            
+               
+                self._draw_game_screen(mouse_pos) 
             pygame.display.flip()
             clock.tick(60)
         pygame.quit()
