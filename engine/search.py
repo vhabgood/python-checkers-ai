@@ -1,4 +1,6 @@
-# engine/search.py
+## engine/search.py
+# At top
+"""from .checkers_game import Checkers
 from .constants import *
 from .evaluation import evaluate_board_static
 from .board import Board
@@ -17,10 +19,8 @@ def _record_killer_move(move, depth, killer_moves):
         killer_moves[depth][1] = killer_moves[depth][0]
         killer_moves[depth][0] = move
 
-def _static_quiescence_search(game, board, turn, alpha, beta, maximizing_player, eval_counter):
-    eval_counter[0] += 1
-    
-    entry = game.transposition_table.get(game.hash)
+def _static_quiescence_search(game, board, current_hash, turn, depth, alpha, beta, eval_counter, progress_callback, killer_moves, path):
+    is_maximizing = (turn == RED)
     if entry:
         return entry['score'], []
 
@@ -44,7 +44,7 @@ def _static_quiescence_search(game, board, turn, alpha, beta, maximizing_player,
     
     best_path = []
     for start, end in capture_moves:
-        temp_game = Checkers([row[:] for row in board], turn, load_resources=False); temp_game.hash = game.hash
+        temp_game = Checkers([row[:] for row in board], turn, load_resources=False); temp_game.hash = current.hash
         further_jumps = temp_game.perform_move_for_search(start, end)
         value, path = _static_quiescence_search(game, temp_game.board, temp_game.turn, alpha, beta, bool(further_jumps), eval_counter)
         
@@ -64,8 +64,12 @@ def _static_quiescence_search(game, board, turn, alpha, beta, maximizing_player,
             
     return stand_pat, best_path
 
-def static_minimax(game, board, turn, depth, alpha, beta, maximizing_player, eval_counter, progress_callback, killer_moves, path):
-    entry = game.transposition_table.get(game.hash)
+def static_minimax(game, board, current_hash, turn, depth, alpha, beta, eval_counter, progress_callback, killer_moves, path):
+    is_maximizing = (turn == RED)
+    # Replace all 'if maximizing_player' with 'if is_maximizing'
+    # In recursion:
+    further_jumps = temp_game.perform_move_for_search(start, end)
+    eval_score, sub_path = static_minimax(game, temp_game.board, temp_game.hash, temp_game.turn, depth - 1, alpha, beta, eval_counter, progress_callback, killer_moves, path + [(start, end)])
     if entry and entry['depth'] >= depth:
         if entry['flag'] == 'EXACT': return entry['score'], entry['path']
         elif entry['flag'] == 'LOWERBOUND' and entry['score'] > alpha: alpha = entry['score']
@@ -93,12 +97,12 @@ def static_minimax(game, board, turn, depth, alpha, beta, maximizing_player, eva
     if maximizing_player:
         max_eval = -float('inf')
         for i, (start, end) in enumerate(ordered_moves):
-            temp_game = Checkers([row[:] for row in board], turn, load_resources=False); temp_game.hash = game.hash; temp_game.perform_move_for_search(start, end)
+            temp_game = Checkers([row[:] for row in board], turn, load_resources=False); temp_game.hash = current.hash; temp_game.perform_move_for_search(start, end)
             
             is_capture = abs(start[0] - end[0]) == 2
             if depth <= 2 and not is_capture and not further_jumps and not any(abs(s[0]-e[0])==2 for s,e in temp_game.get_all_possible_moves(temp_game.turn)):
                 static_eval = evaluate_board_static(temp_game.board, temp_game.turn)
-                if static_eval + Checkers.FUTILITY_MARGIN <= alpha:
+                if static_eval + FUTILITY_MARGIN <= alpha:
                     continue
             
             if progress_callback: progress_callback(None, None, path + [(start, end)])
@@ -114,12 +118,12 @@ def static_minimax(game, board, turn, depth, alpha, beta, maximizing_player, eva
     else: # Minimizing Player
         min_eval = float('inf')
         for i, (start, end) in enumerate(ordered_moves):
-            temp_game = Checkers([row[:] for row in board], turn, load_resources=False); temp_game.hash = game.hash; further_jumps = temp_game.perform_move_for_search(start, end)
+            temp_game = Checkers([row[:] for row in board], turn, load_resources=False); temp_game.hash = current.hash; further_jumps = temp_game.perform_move_for_search(start, end)
             
             is_capture = abs(start[0] - end[0]) == 2
             if depth <= 2 and not is_capture and not further_jumps and not any(abs(s[0]-e[0])==2 for s,e in temp_game.get_all_possible_moves(temp_game.turn)):
                 static_eval = evaluate_board_static(temp_game.board, temp_game.turn)
-                if static_eval - Checkers.FUTILITY_MARGIN >= beta:
+                if static_eval - FUTILITY_MARGIN >= beta:
                     continue
 
             if progress_callback: progress_callback(None, None, path + [(start, end)])
@@ -131,5 +135,5 @@ def static_minimax(game, board, turn, depth, alpha, beta, maximizing_player, eva
                 break
         flag = 'EXACT' if min_eval > alpha and min_eval < beta else 'UPPERBOUND' if min_eval <= alpha else 'LOWERBOUND'
         game.transposition_table[game.hash] = {'score': min_eval, 'depth': depth, 'flag': flag, 'path': best_path}
-        return min_eval, best_path
+        return min_eval, best_path"""
 
