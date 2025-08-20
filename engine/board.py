@@ -1,91 +1,140 @@
 # engine/board.py
-from .constants import *
+from engine.constants import *
 import logging
 
 class Board:
-    def __init__(self, board_state=None, turn=None):
-        self.board = self._setup_board() if board_state is None else [row[:] for row in board_state]
-        self.turn = RED if turn is None else turn
+    def __init__(self):
+        self.board = [[EMPTY for _ in range(8)] for _ in range(8)]
+        self.turn = RED
         self.forced_jumps = []
+        try:
+            self.setup_board()
+        except Exception as e:
+            logging.error(f"Board initialization failed: {str(e)}")
+            raise
 
-    def _setup_board(self):
-        board = [[EMPTY for _ in range(8)] for _ in range(8)]
-        for r in range(8):
-            for c in range(8):
-                if (r + c) % 2 == 1:
-                    if r < 3: board[r][c] = RED
-                    elif r > 4: board[r][c] = WHITE
-        return board
-    
-    def get_all_possible_moves(self, player):
-        if self.forced_jumps:
-            if self.forced_jumps and self.board[self.forced_jumps[0][0][0]][self.forced_jumps[0][0][1]].lower() == player:
-                return self.forced_jumps
-            else:
-                self.forced_jumps = []
-        all_simple, all_jumps = [], []
-        for r in range(8):
-            for c in range(8):
-                if self.board[r][c].lower() == player:
-                    simple, jumps = self._get_piece_moves(r, c)
-                    all_simple.extend(simple); all_jumps.extend(jumps)
-        return all_jumps if all_jumps else all_simple
+    def setup_board(self):
+        logging.debug("Setting up initial board")
+        self.board = [[EMPTY for _ in range(8)] for _ in range(8)]
+        red_squares = [(r, c) for (r, c), acf in COORD_TO_ACF.items() if int(acf) <= 12]
+        white_squares = [(r, c) for (r, c), acf in COORD_TO_ACF.items() if int(acf) >= 21]
+        for row, col in red_squares:
+            if (row + col) % 2 != 0:
+                logging.error(f"Light square in COORD_TO_ACF for Red: ({row},{col})={COORD_TO_ACF[(row,col)]}")
+                continue
+            if self.board[row][col] != EMPTY:
+                logging.warning(f"Overwriting existing piece at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
+            self.board[row][col] = RED
+            logging.debug(f"Placed Red at ({row},{col})={COORD_TO_ACF[(row,col)]}")
+        for row, col in white_squares:
+            if (row + col) % 2 != 0:
+                logging.error(f"Light square in COORD_TO_ACF for White: ({row},{col})={COORD_TO_ACF[(row,col)]}")
+                continue
+            if self.board[row][col] != EMPTY:
+                logging.warning(f"Overwriting existing piece at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
+            self.board[row][col] = WHITE
+            logging.debug(f"Placed White at ({row},{col})={COORD_TO_ACF[(row,col)]}")
+        red_count = sum(row.count(RED) for row in self.board)
+        white_count = sum(row.count(WHITE) for row in self.board)
+        if red_count != 12 or white_count != 12:
+            logging.error(f"Piece count mismatch: Red={red_count}, White={white_count}")
+            # Log all occupied squares to diagnose missing pieces
+            occupied = [(r, c, self.board[r][c], COORD_TO_ACF.get((r, c), '??')) for r in range(8) for c in range(8) if self.board[r][c] != EMPTY]
+            logging.debug(f"Occupied squares: {occupied}")
+        else:
+            logging.info(f"Board setup complete: Red={red_count}, White={white_count}")
+        logging.debug(f"Initial board: {self.board}")
 
-    def _get_piece_moves(self, row, col):
-        simple, jumps, piece = [], [], self.board[row][col]
-        if piece == EMPTY: return [], []
-        dirs = [(-1,-1),(-1,1),(1,-1),(1,1)] if piece.isupper() else [(-1,-1),(-1,1)] if piece==WHITE else [(1,-1),(1,1)]
-        for dr, dc in dirs:
-            r, c = row+dr, col+dc
-            if 0<=r<8 and 0<=c<8 and self.board[r][c]==EMPTY: simple.append(((row, col),(r,c)))
-            r_j, c_j = row+2*dr, col+2*dc
-            if 0<=r_j<8 and 0<=c_j<8 and self.board[r_j][c_j]==EMPTY:
-                if 0<=row+dr<8 and 0<=col+dc<8 and self.board[row+dr][col+dc].lower() not in [piece.lower(), EMPTY]:
-                    jumps.append(((row,col),(r_j,c_j)))
-        return simple, jumps
+    def setup_test_board(self):
+        logging.debug("Setting up test board for endgame")
+        self.board = [[EMPTY for _ in range(8)] for _ in range(8)]
+        self.board[5][5] = RED  # Square 1
+        self.board[5][7] = RED  # Square 2
+        self.board[2][4] = WHITE  # Square 23
+        self.board[2][6] = WHITE  # Square 24
+        self.turn = RED
+        logging.debug(f"Test board: {self.board}")
+        logging.debug(f"Test board piece counts: Red={sum(row.count(RED) for row in self.board)}, White={sum(row.count(WHITE) for row in self.board)}")
 
-    def _promote_to_king(self, row, col):
-        piece = self.board[row][col]
-        if piece == RED and row == 7: self.board[row][col] = RED_KING; return True
-        elif piece == WHITE and row == 0: self.board[row][col] = WHITE_KING; return True
-        return False
-        
-    def perform_move(self, start, end):
-        logging.debug(f"Performing move: {start} -> {end}")
-        piece_to_move = self.board[start[0]][start[1]]
-        self.board[end[0]][end[1]] = piece_to_move; self.board[start[0]][start[1]] = EMPTY
-        promotion = self._promote_to_king(end[0], end[1])
-        captured_piece, captured_pos = [], None
-        is_jump = abs(start[0] - end[0]) == 2
+    def move_piece(self, start, end):
+        logging.debug(f"Moving piece from {start} to {end}, ACF: {COORD_TO_ACF.get(start, '??')}-{COORD_TO_ACF.get(end, '??')}")
+        if start not in COORD_TO_ACF or end not in COORD_TO_ACF:
+            logging.error(f"Invalid move coordinates: {start} -> {end}")
+            return EMPTY, None, False, False
+        start_row, start_col = start
+        end_row, end_col = end
+        piece = self.board[start_row][start_col]
+        captured_piece = EMPTY
+        captured_pos = None
+        promotion = False
+        is_jump = abs(start_row - end_row) == 2
         if is_jump:
-            captured_pos = ((start[0]+end[0])//2, (start[1]+end[1])//2)
-            captured_piece = [self.board[captured_pos[0]][captured_pos[1]]]
-            self.board[captured_pos[0]][captured_pos[1]] = EMPTY
-        further_jumps = []
+            mid_row = (start_row + end_row) // 2
+            mid_col = (start_col + end_col) // 2
+            captured_piece = self.board[mid_row][mid_col]
+            captured_pos = (mid_row, mid_col)
+            if captured_piece == EMPTY or (piece.lower() == RED and captured_piece.lower() == RED) or (piece.lower() == WHITE and captured_piece.lower() == WHITE):
+                logging.error(f"Invalid jump: no opponent piece at {captured_pos}")
+                return EMPTY, None, False, False
+            self.board[mid_row][mid_col] = EMPTY
+        self.board[end_row][end_col] = piece
+        self.board[start_row][start_col] = EMPTY
+        if (piece == RED and end_row == 0) or (piece == WHITE and end_row == 7):
+            self.board[end_row][end_col] = RED_KING if piece == RED else WHITE_KING
+            promotion = True
+        self.forced_jumps = []
         if is_jump:
-            _, further_jumps_list = self._get_piece_moves(end[0], end[1])
-            if further_jumps_list:
-                further_jumps = [(end, j_end) for _, j_end in further_jumps_list]
-        self.forced_jumps = further_jumps
-        logging.debug(f"Move result: captured={captured_piece}, pos={captured_pos}, promotion={promotion}, is_jump={is_jump}")
+            self.forced_jumps = self.get_jumps_for_piece(end, self.board[end_row][end_col])
+        logging.debug(f"Move result: captured={captured_piece}, pos={captured_pos}, promotion={promotion}, is_jump={is_jump}, forced_jumps={self.forced_jumps}")
         return captured_piece, captured_pos, promotion, is_jump
 
-    def is_game_over(self, board=None):
-        logging.debug("Checking if game is over")
-        board = board if board is not None else self.board
-        red_pieces = sum(row.count(RED) + row.count(RED_KING) for row in board)
-        white_pieces = sum(row.count(WHITE) + row.count(WHITE_KING) for row in board)
-        if red_pieces == 0:
-            logging.debug("Game over: White wins, no Red pieces remain")
-            return True, WHITE
-        if white_pieces == 0:
-            logging.debug("Game over: Red wins, no White pieces remain")
-            return True, RED
-        # Check if the current player has no legal moves
-        moves = self.get_all_possible_moves(self.turn)
-        if not moves:
-            winner = WHITE if self.turn == RED else RED
-            logging.debug(f"Game over: {PLAYER_NAMES[winner]} wins, {PLAYER_NAMES[self.turn]} has no moves")
-            return True, winner
-        logging.debug("Game not over")
-        return False, None
+    def get_jumps_for_piece(self, pos, piece):
+        if pos not in COORD_TO_ACF:
+            logging.warning(f"Invalid start position for jumps: {pos}")
+            return []
+        if (pos[0] + pos[1]) % 2 != 0:
+            logging.error(f"Light square used for jumps: {pos}")
+            return []
+        jumps = []
+        row, col = pos
+        directions = [(-1,-1), (-1,1), (1,-1), (1,1)] if piece.isupper() else [(-1,-1), (-1,1)] if piece == RED else [(1,-1), (1,1)]
+        opponent = [WHITE, WHITE_KING] if piece.lower() == RED else [RED, RED_KING]
+        for dr, dc in directions:
+            mid_row, mid_col = row + dr, col + dc
+            end_row, end_col = row + 2*dr, col + 2*dc
+            end_pos = (end_row, end_col)
+            if 0 <= mid_row < 8 and 0 <= mid_col < 8 and 0 <= end_row < 8 and 0 <= end_col < 8:
+                if end_pos in COORD_TO_ACF and self.board[mid_row][mid_col] in opponent and self.board[end_row][end_col] == EMPTY:
+                    jumps.append((pos, end_pos))
+                else:
+                    logging.debug(f"Jump rejected: {pos} -> {end_pos}, mid={self.board[mid_row][mid_col] if 0 <= mid_row < 8 and 0 <= mid_col < 8 else 'out of bounds'}, end={self.board[end_row][end_col] if 0 <= end_row < 8 and 0 <= end_col < 8 else 'out of bounds'}")
+        logging.debug(f"Jumps for {piece} at {pos}: {[(COORD_TO_ACF.get(s, '??') + '-' + COORD_TO_ACF.get(e, '??')) for s, e in jumps]}")
+        return jumps
+
+    def get_all_possible_moves(self, turn):
+        moves = []
+        jumps_exist = False
+        valid_squares = [pos for pos in COORD_TO_ACF if self.board[pos[0]][pos[1]].lower() == turn]
+        logging.debug(f"Valid squares for {turn}: {[(pos, COORD_TO_ACF.get(pos, '??')) for pos in valid_squares]}")
+        for pos in valid_squares:
+            row, col = pos
+            if (row + col) % 2 != 0:
+                logging.error(f"Light square detected in valid squares: {pos}, ACF={COORD_TO_ACF.get(pos, '??')}")
+                continue
+            piece = self.board[row][col]
+            jumps = self.get_jumps_for_piece(pos, piece)
+            if jumps:
+                jumps_exist = True
+                moves.extend(jumps)
+            elif not self.forced_jumps:
+                directions = [(-1,-1), (-1,1), (1,-1), (1,1)] if piece.isupper() else [(-1,-1), (-1,1)] if piece == RED else [(1,-1), (1,1)]
+                for dr, dc in directions:
+                    new_row, new_col = row + dr, col + dc
+                    new_pos = (new_row, new_col)
+                    if new_pos in COORD_TO_ACF and self.board[new_row][new_col] == EMPTY:
+                        moves.append((pos, new_pos))
+                    else:
+                        logging.debug(f"Move rejected: {pos} -> {new_pos}, not in COORD_TO_ACF or not empty")
+        moves = moves if not jumps_exist else [m for m in moves if abs(m[0][0] - m[1][0]) == 2]
+        logging.debug(f"All possible moves for {turn}: {[(COORD_TO_ACF.get(s, '??') + '-' + COORD_TO_ACF.get(e, '??')) for s, e in moves]}")
+        return moves
