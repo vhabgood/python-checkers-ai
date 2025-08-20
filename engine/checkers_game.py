@@ -56,6 +56,8 @@ class Checkers:
             db_path = os.path.join(resource_dir, db_name)
             if self.progress_callback:
                 self.progress_callback(f"Loading {db_name} ({i}/{len(possible_dbs)})")
+                time.sleep(0.1)  # Ensure screen updates
+            gui_logger.debug(f"Attempting to load {db_path}")
             try:
                 if os.path.exists(db_path) and os.path.getsize(db_path) < 100000000:  # Skip files > 100MB
                     with open(db_path, 'rb') as f:
@@ -84,6 +86,9 @@ class Checkers:
         for row in range(8):
             for col in range(8):
                 if (row, col) in COORD_TO_ACF and board[row][col] != EMPTY:
+                    if (row + col) % 2 != 1:
+                        gui_logger.error(f"Piece on light square in board key: ({row},{col})= {COORD_TO_ACF[(row,col)]}")
+                        continue
                     acf_positions.append(f"{COORD_TO_ACF[(row,col)]}:{board[row][col]}")
         acf_key = ','.join(sorted(acf_positions)) + f":{self.game_board.turn}"
         return board_str, acf_key
@@ -138,6 +143,9 @@ class Checkers:
             if start not in COORD_TO_ACF or end not in COORD_TO_ACF:
                 gameplay_logger.warning(f"Invalid move coordinates: {start} -> {end}")
                 continue
+            if (start[0] + start[1]) % 2 != 1 or (end[0] + end[1]) % 2 != 1:
+                gameplay_logger.error(f"Move on light square: start=({start[0]},{start[1]}), end=({end[0]},{end[1]})")
+                continue
             eval_count += 1
             temp_board = copy.deepcopy(self.game_board)
             move_path = [(start, end)]
@@ -153,6 +161,9 @@ class Checkers:
                 next_end = temp_board.forced_jumps[0][1]
                 if next_start not in COORD_TO_ACF or next_end not in COORD_TO_ACF:
                     gameplay_logger.warning(f"Invalid chained jump coordinates: {next_start} -> {next_end}")
+                    break
+                if (next_start[0] + next_start[1]) % 2 != 1 or (next_end[0] + next_end[1]) % 2 != 1:
+                    gameplay_logger.error(f"Chained jump on light square: start=({next_start[0]},{next_start[1]}), end=({next_end[0]},{next_end[1]})")
                     break
                 move_path.append((next_start, next_end))
                 captured_piece, captured_pos, promotion, is_jump = temp_board.move_piece(next_start, next_end)
@@ -199,6 +210,9 @@ class Checkers:
                 if start not in COORD_TO_ACF or end not in COORD_TO_ACF:
                     gameplay_logger.warning(f"Invalid move coordinates in minimax: {start} -> {end}")
                     continue
+                if (start[0] + start[1]) % 2 != 1 or (end[0] + end[1]) % 2 != 1:
+                    gameplay_logger.error(f"Minimax move on light square: start=({start[0]},{start[1]}), end=({end[0]},{end[1]})")
+                    continue
                 temp_board = copy.deepcopy(board)
                 move_path = [(start, end)]
                 captured_piece, captured_pos, promotion, is_jump = temp_board.move_piece(start, end)
@@ -213,6 +227,9 @@ class Checkers:
                     next_end = temp_board.forced_jumps[0][1]
                     if next_start not in COORD_TO_ACF or next_end not in COORD_TO_ACF:
                         gameplay_logger.warning(f"Invalid chained jump coordinates in minimax: {next_start} -> {next_end}")
+                        break
+                    if (next_start[0] + next_start[1]) % 2 != 1 or (next_end[0] + next_end[1]) % 2 != 1:
+                        gameplay_logger.error(f"Minimax chained jump on light square: start=({next_start[0]},{next_start[1]}), end=({next_end[0]},{next_end[1]})")
                         break
                     move_path.append((next_start, next_end))
                     captured_piece, captured_pos, promotion, is_jump = temp_board.move_piece(next_start, next_end)
@@ -240,6 +257,9 @@ class Checkers:
                 if start not in COORD_TO_ACF or end not in COORD_TO_ACF:
                     gameplay_logger.warning(f"Invalid move coordinates in minimax: {start} -> {end}")
                     continue
+                if (start[0] + start[1]) % 2 != 1 or (end[0] + end[1]) % 2 != 1:
+                    gameplay_logger.error(f"Minimax move on light square: start=({start[0]},{start[1]}), end=({end[0]},{end[1]})")
+                    continue
                 temp_board = copy.deepcopy(board)
                 move_path = [(start, end)]
                 captured_piece, captured_pos, promotion, is_jump = temp_board.move_piece(start, end)
@@ -254,6 +274,9 @@ class Checkers:
                     next_end = temp_board.forced_jumps[0][1]
                     if next_start not in COORD_TO_ACF or next_end not in COORD_TO_ACF:
                         gameplay_logger.warning(f"Invalid chained jump coordinates in minimax: {next_start} -> {next_end}")
+                        break
+                    if (next_start[0] + next_start[1]) % 2 != 1 or (next_end[0] + next_end[1]) % 2 != 1:
+                        gameplay_logger.error(f"Minimax chained jump on light square: start=({next_start[0]},{next_start[1]}), end=({next_end[0]},{next_end[1]})")
                         break
                     move_path.append((next_start, next_end))
                     captured_piece, captured_pos, promotion, is_jump = temp_board.move_piece(next_start, next_end)
