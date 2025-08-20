@@ -29,6 +29,7 @@ class CheckersGUI:
             self.ai_move = None
             self.ai_move_lock = threading.Lock()
             self.ai_computing = False
+            self.show_acf_numbers = True  # Debug: Show ACF numbers by default
             logging.info("CheckersGUI initialized")
             # Uncomment to test endgame database
             # self.checkers.game_board.setup_test_board()
@@ -45,10 +46,10 @@ class CheckersGUI:
                 self.screen.blit(text, (250, 300))
                 pygame.display.flip()
                 return
-            # Draw board
+            # Draw board with correct light/dark squares (bottom-left light: (row + col) % 2 == 1 = light)
             for row in range(8):
                 for col in range(8):
-                    color = COLOR_LIGHT_SQUARE if (row + col) % 2 == 0 else COLOR_DARK_SQUARE
+                    color = COLOR_LIGHT_SQUARE if (row + col) % 2 == 1 else COLOR_DARK_SQUARE
                     pygame.draw.rect(self.screen, color, (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
                     piece = self.checkers.game_board.board[row][col]
                     if piece != EMPTY:
@@ -58,6 +59,13 @@ class CheckersGUI:
                         if piece.isupper():
                             pygame.draw.circle(self.screen, COLOR_CROWN, 
                                 (col * SQUARE_SIZE + SQUARE_SIZE // 2, row * SQUARE_SIZE + SQUARE_SIZE // 2), PIECE_RADIUS // 2)
+                    # Debug: Draw ACF numbers on dark squares
+                    if self.show_acf_numbers and (row, col) in COORD_TO_ACF:
+                        font = pygame.font.Font(None, 14)
+                        acf_text = COORD_TO_ACF[(row, col)]
+                        text_surface = font.render(acf_text, True, COLOR_TEXT)
+                        self.screen.blit(text_surface, (col * SQUARE_SIZE + 5, row * SQUARE_SIZE + 5))
+                        logging.debug(f"Rendering ACF {acf_text} at ({row},{col})")
             # Draw info panel
             font = pygame.font.Font(None, 16)
             info_x = 590
@@ -139,6 +147,9 @@ class CheckersGUI:
                         elif event.key == pygame.K_d:
                             self.developer_mode = not self.developer_mode
                             logging.info(f"Developer mode: {self.developer_mode}")
+                        elif event.key == pygame.K_n:
+                            self.show_acf_numbers = not self.show_acf_numbers
+                            logging.info(f"ACF numbers display: {self.show_acf_numbers}")
                 self.draw_board()
                 self.clock.tick(60)
             except Exception as e:
