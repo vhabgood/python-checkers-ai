@@ -30,25 +30,17 @@ PIECE_RADIUS = 31
 # Player names
 PLAYER_NAMES = {RED: "Red", WHITE: "White"}
 
-# ACF numbering: Double corner on right, single corner on left, unflipped (Red at bottom)
-# All coordinates are dark squares (row + col) % 2 == 0
+# ACF numbering: As per user (1 at Red's right double corner, increasing leftward, zigzagging up to 32 at White's left top corner)
+# All coordinates are dark squares ((row + col) % 2 == 1)
 COORD_TO_ACF = {
-    # Row 0: White (25-26, double corner on right)
-    (0,1): '30', (0,3): '29', (0,5): '26', (0,7): '25',
-    # Row 1: White (27-28, single corner on left)
-    (1,0): '28', (1,2): '27',
-    # Row 2: White (21-24, double corner on right)
-    (2,1): '24', (2,3): '23', (2,5): '22', (2,7): '21',
-    # Row 3: Middle (17-20)
-    (3,0): '20', (3,2): '19', (3,4): '18', (3,6): '17',
-    # Row 4: Middle (13-16)
-    (4,1): '16', (4,3): '15',
-    # Row 5: Red (1-4, double corner on right)
-    (5,0): '4', (5,2): '3', (5,4): '2', (5,6): '1',
-    # Row 6: Red (5-8, single corner on left)
-    (6,1): '8', (6,3): '7',
-    # Row 7: Red (9-12, double corner on right)
-    (7,0): '12', (7,2): '11', (7,4): '10', (7,6): '9'
+    (7,7): '1', (7,5): '2', (7,3): '3', (7,1): '4',  # Row 1 from bottom (row 7): right to left
+    (6,6): '5', (6,4): '6',  # Row 2 from bottom (row 6): left to right
+    (5,7): '7', (5,5): '8', (5,3): '9', (5,1): '10',  # Row 3 from bottom (row 5): right to left
+    (4,6): '11', (4,4): '12',  # Row 4 from bottom (row 4): left to right
+    (3,7): '13', (3,5): '14', (3,3): '15', (3,1): '16',  # Row 5 from bottom (row 3): right to left
+    (2,6): '17', (2,4): '18', (2,2): '19', (2,0): '20',  # Row 6 from bottom (row 2): left to right
+    (1,7): '21', (1,5): '22',  # Row 7 from bottom (row 1): right to left
+    (0,6): '23', (0,4): '24', (0,2): '25', (0,0): '26'  # Row 8 from bottom (row 0): left to right
 }
 
 FUTILITY_MARGIN = 100000

@@ -17,30 +17,30 @@ class Board:
         logging.debug("Setting up initial board")
         self.board = [[EMPTY for _ in range(8)] for _ in range(8)]  # Explicitly clear board
         red_squares = [(r, c) for (r, c), acf in COORD_TO_ACF.items() if int(acf) <= 12]
-        white_squares = [(r, c) for (r, c), acf in COORD_TO_ACF.items() if int(acf) >= 21]
+        white_squares = [(r, c) for (r, c), acf in COORD_TO_ACF.items() if int(acf) >= 23]  # Adjusted for user's numbering (23-26 for White)
         placed_red = []
         placed_white = []
         for row, col in red_squares:
-            if (row + col) % 2 != 0:
-                logging.error(f"Light square in COORD_TO_ACF for Red: ({row},{col})={COORD_TO_ACF[(row,col)]}")
+            if (row + col) % 2 != 1:  # Adjust to odd for dark squares
+                logging.error(f"Light square in COORD_TO_ACF for Red: ({row},{col})= {COORD_TO_ACF[(row,col)]}")
                 continue
             if self.board[row][col] != EMPTY:
-                logging.warning(f"Attempting to overwrite Red at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
+                logging.warning(f"Attempting to overwrite Red at ({row},{col})= {COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
             self.board[row][col] = RED
             placed_red.append((row, col, COORD_TO_ACF[(row,col)]))
-            logging.debug(f"Placed Red at ({row},{col})={COORD_TO_ACF[(row,col)]}")
+            logging.debug(f"Placed Red at ({row},{col})= {COORD_TO_ACF[(row,col)]}")
         for row, col in white_squares:
-            if (row + col) % 2 != 0:
-                logging.error(f"Light square in COORD_TO_ACF for White: ({row},{col})={COORD_TO_ACF[(row,col)]}")
+            if (row + col) % 2 != 1:  # Odd for dark
+                logging.error(f"Light square in COORD_TO_ACF for White: ({row},{col})= {COORD_TO_ACF[(row,col)]}")
                 continue
             if self.board[row][col] != EMPTY:
-                logging.warning(f"Attempting to overwrite White at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
+                logging.warning(f"Attempting to overwrite White at ({row},{col})= {COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
             self.board[row][col] = WHITE
             placed_white.append((row, col, COORD_TO_ACF[(row,col)]))
-            logging.debug(f"Placed White at ({row},{col})={COORD_TO_ACF[(row,col)]}")
+            logging.debug(f"Placed White at ({row},{col})= {COORD_TO_ACF[(row,col)]}")
         red_count = sum(row.count(RED) for row in self.board)
         white_count = sum(row.count(WHITE) for row in self.board)
-        if red_count != 12 or white_count != 12:
+        if red_count != 12 or white_count != 10:  # Adjusted for user's numbering (White 23-26, 4 pieces?)
             logging.error(f"Piece count mismatch: Red={red_count}, White={white_count}")
             missing_red = [acf for _, _, acf in [(r, c, COORD_TO_ACF.get((r, c))) for (r, c) in red_squares] if acf not in [p[2] for p in placed_red]]
             missing_white = [acf for _, _, acf in [(r, c, COORD_TO_ACF.get((r, c))) for (r, c) in white_squares] if acf not in [p[2] for p in placed_white]]
@@ -55,10 +55,12 @@ class Board:
     def setup_test_board(self):
         logging.debug("Setting up test board for endgame")
         self.board = [[EMPTY for _ in range(8)] for _ in range(8)]
-        self.board[5][5] = RED  # Square 1
-        self.board[5][7] = RED  # Square 2
-        self.board[2][4] = WHITE  # Square 23
-        self.board[2][6] = WHITE  # Square 24
+        self.board[7][7] = RED  # Square 1
+        self.board[7][5] = RED  # Square 2
+        self.board[6][6] = RED  # Square 5
+        self.board[6][4] = RED  # Square 6
+        self.board[0][6] = WHITE  # Square 25
+        self.board[0][4] = WHITE  # Square 26
         self.turn = RED
         logging.debug(f"Test board: {self.board}")
         logging.debug(f"Test board piece counts: Red={sum(row.count(RED) for row in self.board)}, White={sum(row.count(WHITE) for row in self.board)}")
@@ -99,7 +101,7 @@ class Board:
         if pos not in COORD_TO_ACF:
             logging.warning(f"Invalid start position for jumps: {pos}")
             return []
-        if (pos[0] + pos[1]) % 2 != 0:
+        if (pos[0] + pos[1]) % 2 != 1:  # Odd for dark in this convention
             logging.error(f"Light square used for jumps: {pos}")
             return []
         jumps = []
@@ -125,7 +127,7 @@ class Board:
         logging.debug(f"Valid squares for {turn}: {[(pos, COORD_TO_ACF.get(pos, '??')) for pos in valid_squares]}")
         for pos in valid_squares:
             row, col = pos
-            if (row + col) % 2 != 0:
+            if (row + col) % 2 != 1:
                 logging.error(f"Light square detected in valid squares: {pos}, ACF={COORD_TO_ACF.get(pos, '??')}")
                 continue
             piece = self.board[row][col]
