@@ -15,32 +15,39 @@ class Board:
 
     def setup_board(self):
         logging.debug("Setting up initial board")
-        self.board = [[EMPTY for _ in range(8)] for _ in range(8)]
+        self.board = [[EMPTY for _ in range(8)] for _ in range(8)]  # Explicitly clear board
         red_squares = [(r, c) for (r, c), acf in COORD_TO_ACF.items() if int(acf) <= 12]
         white_squares = [(r, c) for (r, c), acf in COORD_TO_ACF.items() if int(acf) >= 21]
+        placed_red = []
+        placed_white = []
         for row, col in red_squares:
             if (row + col) % 2 != 0:
                 logging.error(f"Light square in COORD_TO_ACF for Red: ({row},{col})={COORD_TO_ACF[(row,col)]}")
                 continue
             if self.board[row][col] != EMPTY:
-                logging.warning(f"Overwriting existing piece at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
+                logging.warning(f"Attempting to overwrite Red at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
             self.board[row][col] = RED
+            placed_red.append((row, col, COORD_TO_ACF[(row,col)]))
             logging.debug(f"Placed Red at ({row},{col})={COORD_TO_ACF[(row,col)]}")
         for row, col in white_squares:
             if (row + col) % 2 != 0:
                 logging.error(f"Light square in COORD_TO_ACF for White: ({row},{col})={COORD_TO_ACF[(row,col)]}")
                 continue
             if self.board[row][col] != EMPTY:
-                logging.warning(f"Overwriting existing piece at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
+                logging.warning(f"Attempting to overwrite White at ({row},{col})={COORD_TO_ACF[(row,col)]}: {self.board[row][col]}")
             self.board[row][col] = WHITE
+            placed_white.append((row, col, COORD_TO_ACF[(row,col)]))
             logging.debug(f"Placed White at ({row},{col})={COORD_TO_ACF[(row,col)]}")
         red_count = sum(row.count(RED) for row in self.board)
         white_count = sum(row.count(WHITE) for row in self.board)
         if red_count != 12 or white_count != 12:
             logging.error(f"Piece count mismatch: Red={red_count}, White={white_count}")
-            # Log all occupied squares to diagnose missing pieces
+            missing_red = [acf for _, _, acf in [(r, c, COORD_TO_ACF.get((r, c))) for (r, c) in red_squares] if acf not in [p[2] for p in placed_red]]
+            missing_white = [acf for _, _, acf in [(r, c, COORD_TO_ACF.get((r, c))) for (r, c) in white_squares] if acf not in [p[2] for p in placed_white]]
+            logging.debug(f"Missing Red: {missing_red}")
+            logging.debug(f"Missing White: {missing_white}")
             occupied = [(r, c, self.board[r][c], COORD_TO_ACF.get((r, c), '??')) for r in range(8) for c in range(8) if self.board[r][c] != EMPTY]
-            logging.debug(f"Occupied squares: {occupied}")
+            logging.debug(f"Occupied squares: {sorted(occupied, key=lambda x: int(x[3]) if x[3] != '??' else 999)}")
         else:
             logging.info(f"Board setup complete: Red={red_count}, White={white_count}")
         logging.debug(f"Initial board: {self.board}")
