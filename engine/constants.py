@@ -33,22 +33,13 @@ PLAYER_NAMES = {RED: "Red", WHITE: "White"}
 # ACF numbering: 1 at Red's right double corner (7,6), zigzagging left to right, up to 32 at White's top-left (0,1)
 # All coordinates are dark squares ((row + col) % 2 == 1)
 COORD_TO_ACF = {
-    # Row 1 (bottom, row 7): right to left
-    (7,6): '1', (7,4): '2', (7,2): '3', (7,0): '4',
-    # Row 2 (row 6): left to right
-    (6,7): '5', (6,5): '6', (6,3): '7', (6,1): '8',
-    # Row 3 (row 5): right to left
-    (5,6): '9', (5,4): '10', (5,2): '11', (5,0): '12',
-    # Row 4 (row 4): left to right
-    (4,7): '13', (4,5): '14', (4,3): '15', (4,1): '16',
-    # Row 5 (row 3): right to left
-    (3,6): '17', (3,4): '18', (3,2): '19', (3,0): '20',
-    # Row 6 (row 2): left to right
-    (2,7): '21', (2,5): '22', (2,3): '23', (2,1): '24',
-    # Row 7 (row 1): right to left
-    (1,6): '25', (1,4): '26', (1,2): '27', (1,0): '28',
-    # Row 8 (row 0): left to right
-    (0,7): '29', (0,5): '30', (0,3): '31', (0,1): '32'
+    (5,1): 12, (5,3): 11, (5,5): 10, (5,7): 9,
+    (6,0): 8, (6,2): 7, (6,4): 6, (6,6): 5,
+    (7,1): 4, (7,3): 3, (7,5): 2, (7,7): 1,
+    (0,0): 32, (0,2): 31, (0,4): 30, (0,6): 29,
+    (1,1): 28, (1,3): 27, (1,5): 26, (1,7): 25,
+    (2,0): 24, (2,2): 23, (2,4): 22, (2,6): 21
 }
+ACF_TO_COORD = {v: k for k, v in COORD_TO_ACF.items()}
 
 FUTILITY_MARGIN = 100000
