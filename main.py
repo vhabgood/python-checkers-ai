@@ -71,7 +71,7 @@ class Checkers:
         
         # --- This is the key change to fix the AttributeError ---
         initial_board_state = setup_initial_board()
-        self.game = CheckersGame(self.screen)
+        self.game = CheckersGame(self.screen) # NOTE: Passing the screen object here
         self.game.board = initial_board_state
         # --- End of key change ---
 

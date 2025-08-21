@@ -42,18 +42,19 @@ FPS = 60
 logger = logging.getLogger('gui')
 
 class CheckersGame:
-    def __init__(self, mode='human', no_db=False):
+    # NOTE: The __init__ method now correctly takes the screen object as an argument.
+    def __init__(self, screen, mode='human', no_db=False):
         """
         Initialize the checkers game with Pygame, board, and menu.
         Verified working 100% correctly as of commit d2f58b72a719f621afa165a3ecbae26d00e07499.
         Sets up board, pieces, menu, and buttons; logs initial state.
         """
+        self.screen = screen
         self.mode = mode
         self.no_db = no_db
-        # NOTE: Your main.py sets up the screen, so we assume it's passed in.
-        # This prevents the program from trying to create a new window.
-        self.screen = pygame.display.set_mode((600, 480))
-        pygame.display.set_caption("Checkers Game")
+        # NOTE: This line is removed to prevent creating a new window.
+        # self.screen = pygame.display.set_mode((600, 480))
+        # pygame.display.set_caption("Checkers Game")
 
         self.board = setup_initial_board()
         self.square_size = 60
@@ -132,10 +133,14 @@ class CheckersGame:
         to the GUI thread via the queue.
         """
         logger.info("Starting AI calculation in a new thread...")
-        # For now, we'll just simulate an AI move.
-        # This will be replaced by your actual AI search logic later.
         self.interrupt_flag.clear()
+        
+        # NOTE: This is a placeholder for your actual AI search logic.
+        # It needs to be replaced with a call to your Minimax or Alpha-Beta function.
+        # It should check self.interrupt_flag.is_set() periodically.
+        
         time.sleep(2) # Simulate a longer calculation
+        
         valid_moves = get_valid_moves(self.board, self.current_player)
         self.best_move = valid_moves[0] if valid_moves else None
 
