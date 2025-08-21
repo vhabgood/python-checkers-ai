@@ -11,15 +11,16 @@ logger = logging.getLogger('gui')
 FPS = 60
 
 class CheckersGame:
-    def __init__(self, mode='human'):
+    def __init__(self, mode='human', no_db=False):
         # Initialize Pygame
         pygame.init()
         self.mode = mode
+        self.no_db = no_db
         self.screen = pygame.display.set_mode((600, 480))  # Extra width for menu
         pygame.display.set_caption("Checkers Game")
         self.board = setup_initial_board()
         self.square_size = 60
-        self.font = pygame.font.SysFont('Arial', 20)
+        self.font = pygame.font.SysFont('Arial', 14)  # Smaller font for menu
         self.menu_width = 120
         self.ai_ply = 6
         self.developer_mode = False
@@ -33,7 +34,7 @@ class CheckersGame:
             {'text': 'Toggle Numbers', 'rect': pygame.Rect(490, 360, 100, 30), 'action': self.toggle_numbers},
             {'text': 'Dev Mode: Off', 'rect': pygame.Rect(490, 400, 100, 30), 'action': self.toggle_dev_mode}
         ]
-        logger.info("CheckersGame initialized with mode: %s", mode)
+        logger.info("CheckersGame initialized with mode: %s, no-db: %s", mode, no_db)
         red_count, white_count = count_pieces(self.board)
         logger.debug(f"Initial piece count: Red={red_count}, White={white_count}")
         for row in range(8):
@@ -103,7 +104,7 @@ class CheckersGame:
         score_text = self.font.render("Score: 0-0", True, (0, 0, 0))
         self.screen.blit(score_text, (490, 80))
         red_count, white_count = count_pieces(self.board)
-        piece_text = self.font.render(f"Piece Count: {red_count}+0 red, {white_count}+0 white", True, (0, 0, 0))
+        piece_text = self.font.render(f"Piece: {red_count}+0 red, {white_count}+0 white", True, (0, 0, 0))
         self.screen.blit(piece_text, (490, 120))
         ply_text = self.font.render(f"AI Ply: {self.ai_ply}", True, (0, 0, 0))
         self.screen.blit(ply_text, (490, 160))
@@ -125,8 +126,8 @@ class CheckersGame:
                 if piece in ['r', 'w', 'R', 'W']:
                     piece_color = (200, 0, 0) if piece.lower() == 'r' else (255, 255, 255)
                     pygame.draw.circle(self.screen, piece_color, 
-                                     (x + self.square_size // 2, y + self.square_size // 2), 
-                                     self.square_size // 2 - 5)
+                                       (x + self.square_size // 2, y + self.square_size // 2), 
+                                       self.square_size // 2 - 5)
                     logger.debug(f"Drawing piece {piece} at ({row},{col})")
                 # Draw ACF numbers on dark squares if enabled
                 if self.show_numbers and (row, col) in COORD_TO_ACF:
@@ -156,9 +157,9 @@ class CheckersGame:
         self.draw_board()
         return True
 
-async def main(mode='human'):
+async def main(mode='human', no_db=False):
     # Initialize and run the game loop
-    game = CheckersGame(mode)
+    game = CheckersGame(mode, no_db)
     while True:
         if not game.update_loop():
             break

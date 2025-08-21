@@ -3,6 +3,7 @@ import asyncio
 import logging
 import argparse
 import platform
+import os
 from engine.checkers_game import main as game_main
 
 # Configure logging
@@ -14,11 +15,17 @@ def parse_args():
     parser.add_argument('--mode', choices=['human', 'ai'], default='human', help="Game mode: human or ai")
     parser.add_argument('--debug-GUI', action='store_true', help="Enable GUI debugging")
     parser.add_argument('--debug-board', action='store_true', help="Enable board debugging")
+    parser.add_argument('--no-db', action='store_true', help="Disable endgame database loading")
     return parser.parse_args()
 
 def setup_logging(args):
     # Configure logging to file only
-    handlers = [logging.FileHandler('checkers_debug.log', mode='w')]
+    log_file = 'checkers_debug.log'
+    try:
+        handlers = [logging.FileHandler(log_file, mode='w')]
+    except Exception as e:
+        print(f"Error creating log file {log_file}: {str(e)}")
+        handlers = []
     log_level = logging.WARNING  # Default level
     if args.debug_GUI or args.debug_board:
         log_level = logging.DEBUG
@@ -31,16 +38,20 @@ def setup_logging(args):
     # Set specific logger levels
     logging.getLogger('gui').setLevel(logging.DEBUG if args.debug_GUI else logging.WARNING)
     logging.getLogger('board').setLevel(logging.DEBUG if args.debug_board else logging.WARNING)
+    if os.path.exists(log_file):
+        logger.info(f"Logging initialized to {log_file}")
+    else:
+        logger.error(f"Log file {log_file} not created")
 
 def main():
     args = parse_args()
     setup_logging(args)
-    logger.info("Starting Checkers game with mode: %s", args.mode)
+    logger.info("Starting Checkers game with mode: %s, no-db: %s", args.mode, args.no_db)
     try:
         if platform.system() == "Emscripten":
-            asyncio.ensure_future(game_main(args.mode))
+            asyncio.ensure_future(game_main(args.mode, args.no_db))
         else:
-            asyncio.run(game_main(args.mode))
+            asyncio.run(game_main(args.mode, args.no_db))
     except Exception as e:
         logger.error("Failed to initialize game: %s", str(e))
         raise
