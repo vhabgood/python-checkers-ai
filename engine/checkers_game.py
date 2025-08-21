@@ -67,6 +67,11 @@ class CheckersGame(BaseState):
         self.current_player = 'w' if self.player_choice == WHITE else 'r'
         self.score = 0  # Positional score (red - white)
         
+        # --- New variables for human move logic ---
+        self.selected_piece = None
+        self.valid_moves = []
+        # --- End of new variables ---
+        
         # --- Corrected variables for AI and threading ---
         self.ai_is_thinking = False
         self.ai_thread = None
@@ -176,10 +181,9 @@ class CheckersGame(BaseState):
         if self.ai_is_thinking and self.ai_thread and self.ai_thread.is_alive():
             logger.info("AI calculation interrupted.")
             self.interrupt_flag.set()
-        # NOTE: The logic is corrected here. We now check if the current player is the AI
         else:
             logger.info("Starting AI turn.")
-            self.current_player = 'r' if self.player_choice == 'w' else 'w'
+            self.current_player = 'r' # Assume AI is 'r'
             self.ai_is_thinking = True
             self.ai_thread = threading.Thread(target=self.run_ai_in_thread)
             self.ai_thread.start()
@@ -197,7 +201,7 @@ class CheckersGame(BaseState):
         from_acf = COORD_TO_ACF.get((from_row, from_col), 'unknown')
         to_acf = COORD_TO_ACF.get((to_row, to_col), 'unknown')
         move_notation = f"{from_acf}-{to_acf}" if not is_jump else f"{from_acf}x{to_acf}"
-        logger.info(f"Applying AI move for {self.current_player}: {move_notation}")
+        logger.info(f"Applying move for {self.current_player}: {move_notation}")
         self.board = make_move(self.board, move)
         self.board_history.append(self.board)
         self.move_history.append(move_notation)
@@ -205,6 +209,8 @@ class CheckersGame(BaseState):
         logger.debug(f"Updated score: {self.score}")
         self.current_player = 'w' if self.current_player == 'r' else 'r'
         self.ai_is_thinking = False
+        self.selected_piece = None
+        self.valid_moves = []
 
     def undo_move(self):
         """
@@ -251,6 +257,7 @@ class CheckersGame(BaseState):
                 if event.button == 1:  # Left click
                     mouse_pos = event.pos
                     logger.debug(f"Mouse click at {mouse_pos}")
+                    # Check for button clicks
                     for button in self.buttons:
                         if button['rect'].collidepoint(mouse_pos):
                             logger.info(f"Button clicked: {button['text']}")
@@ -258,8 +265,11 @@ class CheckersGame(BaseState):
                                 button['action']()
                             except Exception as e:
                                 logger.error(f"Button {button['text']} action failed: {str(e)}")
-                            break
-                        # NOTE: Add game board click handling here in the future
+                            return # Exit after a button is clicked
+                    
+                    # If it's a human player's turn, handle board clicks
+                    if self.current_player == self.player_choice:
+                        self.handle_board_click(mouse_pos)
         
         # Check for messages from the AI thread
         try:
@@ -272,12 +282,58 @@ class CheckersGame(BaseState):
             pass
         except Exception as e:
             logger.error(f"Error updating GUI from message queue: {e}")
+
+    def handle_board_click(self, mouse_pos):
+        """
+        Handles clicks on the board for the human player.
+        """
+        # Convert mouse position to board row and column
+        board_col = mouse_pos[0] // self.square_size
+        board_row = mouse_pos[1] // self.square_size
+        
+        # Invert coordinates if the board is flipped
+        if self.board_orientation == 'flipped':
+            board_col = 7 - board_col
+            board_row = 7 - board_row
+
+        clicked_square = (board_row, board_col)
+
+        # Check if a piece is already selected
+        if self.selected_piece:
+            # Check if the clicked square is a valid move
+            for move in self.valid_moves:
+                if (clicked_square[0], clicked_square[1]) == (move[2], move[3]):
+                    # A valid move has been found, so apply it
+                    self.apply_move((self.selected_piece[0], self.selected_piece[1], clicked_square[0], clicked_square[1], move[4]))
+                    self.selected_piece = None
+                    self.valid_moves = []
+                    logger.info(f"Human move applied: {self.selected_piece} -> {clicked_square}")
+                    return
+
+            # If the click was not on a valid move, unselect the piece
+            self.selected_piece = None
+            self.valid_moves = []
+            logger.info("Move cancelled. Piece unselected.")
+
+        # If no piece is selected, try to select one
+        else:
+            piece_at_click = self.board[clicked_square[0]][clicked_square[1]]
+            player_pieces = ['w', 'W'] if self.player_choice == 'w' else ['r', 'R']
             
+            if piece_at_click in player_pieces:
+                self.selected_piece = clicked_square
+                # Get and store valid moves for the selected piece
+                all_valid_moves = get_valid_moves(self.board, self.current_player)
+                # FIX: Corrected a typo here. 'selected_square' should be 'selected_piece'
+                self.valid_moves = [move for move in all_valid_moves if (move[0], move[1]) == self.selected_piece]
+                logger.info(f"Piece selected at {self.selected_piece}. Found {len(self.valid_moves)} valid moves.")
+            else:
+                logger.info("Clicked on an empty square or an opponent's piece.")
+
     def update(self):
         """
         Update game state logic.
         """
-        # This is where game logic would be updated, e.g., checking for game over.
         pass
         
     def draw(self):
@@ -325,6 +381,16 @@ class CheckersGame(BaseState):
                 color = (85, 85, 85) if is_dark_square(row, col) else (245, 245, 220)
                 pygame.draw.rect(self.screen, color, (x, y, self.square_size, self.square_size))
                 
+                # Highlight selected piece
+                if self.selected_piece and (row, col) == self.selected_piece:
+                    pygame.draw.circle(self.screen, COLOR_SELECTED, (x + self.square_size // 2, y + self.square_size // 2), PIECE_RADIUS + 5, 3)
+
+                # Draw highlights for valid moves
+                if self.valid_moves:
+                    for move in self.valid_moves:
+                        if (row, col) == (move[2], move[3]):
+                             pygame.draw.rect(self.screen, COLOR_HIGHLIGHT, (x, y, self.square_size, self.square_size), 3)
+
                 piece = self.board[row][col]
                 if piece in ['r', 'w', 'R', 'W']:
                     piece_color = (200, 0, 0) if piece.lower() == 'r' else (255, 255, 255)
@@ -344,4 +410,5 @@ class CheckersGame(BaseState):
                         logger.error(f"Attempted to render ACF {acf} on light square at ({row},{col})")
         
         pygame.display.flip()
+
 

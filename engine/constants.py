@@ -20,6 +20,8 @@ COLOR_TEXT = (0, 0, 0)
 COLOR_BG = (200, 200, 200)
 COLOR_BUTTON = (150, 150, 150)
 COLOR_BUTTON_HOVER = (180, 180, 180)
+# NOTE: New color for valid move highlights
+COLOR_VALID_MOVE_HIGHLIGHT = (100, 255, 100)
 
 # Sizes
 BOARD_SIZE = 576
@@ -43,3 +45,4 @@ COORD_TO_ACF = {
 ACF_TO_COORD = {v: k for k, v in COORD_TO_ACF.items()}
 
 FUTILITY_MARGIN = 100000
+
