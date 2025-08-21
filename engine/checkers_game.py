@@ -9,7 +9,16 @@ import time
 from queue import Queue, Empty
 
 from game_states import BaseState
-from engine.board import setup_initial_board, COORD_TO_ACF, count_pieces, is_dark_square, get_valid_moves, make_move, evaluate_board
+from engine.board import (
+    setup_initial_board,
+    COORD_TO_ACF,
+    count_pieces,
+    is_dark_square,
+    get_valid_moves,
+    make_move,
+    evaluate_board,
+    check_for_kinging
+)
 from engine.constants import (
     BOARD_SIZE,
     INFO_WIDTH,
@@ -203,6 +212,7 @@ class CheckersGame(BaseState):
         move_notation = f"{from_acf}-{to_acf}" if not is_jump else f"{from_acf}x{to_acf}"
         logger.info(f"Applying move for {self.current_player}: {move_notation}")
         self.board = make_move(self.board, move)
+        self.board = check_for_kinging(self.board) # NOTE: Check for kinging after every move
         self.board_history.append(self.board)
         self.move_history.append(move_notation)
         self.score = evaluate_board(self.board)
@@ -305,8 +315,6 @@ class CheckersGame(BaseState):
                 if (clicked_square[0], clicked_square[1]) == (move[2], move[3]):
                     # A valid move has been found, so apply it
                     self.apply_move((self.selected_piece[0], self.selected_piece[1], clicked_square[0], clicked_square[1], move[4]))
-                    self.selected_piece = None
-                    self.valid_moves = []
                     logger.info(f"Human move applied: {self.selected_piece} -> {clicked_square}")
                     return
 
@@ -324,7 +332,6 @@ class CheckersGame(BaseState):
                 self.selected_piece = clicked_square
                 # Get and store valid moves for the selected piece
                 all_valid_moves = get_valid_moves(self.board, self.current_player)
-                # FIX: Corrected a typo here. 'selected_square' should be 'selected_piece'
                 self.valid_moves = [move for move in all_valid_moves if (move[0], move[1]) == self.selected_piece]
                 logger.info(f"Piece selected at {self.selected_piece}. Found {len(self.valid_moves)} valid moves.")
             else:

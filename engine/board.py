@@ -134,6 +134,22 @@ def evaluate_board(board):
     Evaluate the board for a simple positional score (red - white piece count).
     Returns positive for red advantage, negative for white.
     """
-    red_count, white_count = count_pieces(board)
+    red_count = sum(row.count('r') + row.count('R') for row in board)
+    white_count = sum(row.count('w') + row.count('W') for row in board)
     return red_count - white_count
+
+def check_for_kinging(board):
+    """
+    Check if any pieces have reached the opposite side of the board and should be crowned as kings.
+    """
+    new_board = [row[:] for row in board]
+    for col in range(8):
+        # Check for white pieces at the top row (row 0)
+        if new_board[0][col] == 'w':
+            new_board[0][col] = 'W'
+        # Check for red pieces at the bottom row (row 7)
+        if new_board[7][col] == 'r':
+            new_board[7][col] = 'R'
+    return new_board
+
 
