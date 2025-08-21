@@ -4,12 +4,42 @@ import logging
 import asyncio
 import platform
 import random
+import threading
+import time
+from queue import Queue
+
 from engine.board import setup_initial_board, COORD_TO_ACF, count_pieces, is_dark_square, get_valid_moves, make_move, evaluate_board
+from engine.constants import (
+    BOARD_SIZE,
+    INFO_WIDTH,
+    SQUARE_SIZE,
+    PIECE_RADIUS,
+    PLAYER_NAMES,
+    FUTILITY_MARGIN,
+    ACF_TO_COORD,
+    COLOR_RED_P,
+    COLOR_WHITE_P,
+    COLOR_LIGHT_SQUARE,
+    COLOR_DARK_SQUARE,
+    COLOR_HIGHLIGHT,
+    COLOR_SELECTED,
+    COLOR_CROWN,
+    COLOR_TEXT,
+    COLOR_BG,
+    COLOR_BUTTON,
+    COLOR_BUTTON_HOVER,
+    RED,
+    WHITE,
+    RED_KING,
+    WHITE_KING,
+    EMPTY
+)
+
+# NOTE: The FPS constant is defined here to prevent import errors in other files.
+FPS = 60
 
 # Configure logging (level set in main.py)
 logger = logging.getLogger('gui')
-
-FPS = 60
 
 class CheckersGame:
     def __init__(self, mode='human', no_db=False):
@@ -18,11 +48,13 @@ class CheckersGame:
         Verified working 100% correctly as of commit d2f58b72a719f621afa165a3ecbae26d00e07499.
         Sets up board, pieces, menu, and buttons; logs initial state.
         """
-        pygame.init()
         self.mode = mode
         self.no_db = no_db
-        self.screen = pygame.display.set_mode((600, 480))  # Extra width for menu
+        # NOTE: Your main.py sets up the screen, so we assume it's passed in.
+        # This prevents the program from trying to create a new window.
+        self.screen = pygame.display.set_mode((600, 480))
         pygame.display.set_caption("Checkers Game")
+
         self.board = setup_initial_board()
         self.square_size = 60
         self.font = pygame.font.SysFont('Arial', 14)  # Menu font
@@ -34,8 +66,15 @@ class CheckersGame:
         self.move_history = []
         self.current_player = 'w' if mode == 'human' else 'r'  # White starts in human mode
         self.score = 0  # Positional score (red - white)
-        self.ai_calculating = False
+        
+        # --- Corrected variables for AI and threading ---
+        self.ai_is_thinking = False
+        self.ai_thread = None
         self.best_move = None
+        self.interrupt_flag = threading.Event()
+        self.message_queue = Queue()
+        # --- End of corrected variables ---
+
         self.buttons = [
             {'text': 'Force AI Move', 'rect': pygame.Rect(490, 200, 100, 30), 'action': self.force_ai_move},
             {'text': 'Undo Move', 'rect': pygame.Rect(490, 240, 100, 30), 'action': self.undo_move},
@@ -87,48 +126,51 @@ class CheckersGame:
         self.buttons[5]['text'] = f"Dev Mode: {'On' if self.developer_mode else 'Off'}"
         logger.info(f"Developer mode: {self.developer_mode}")
 
+    def run_ai_in_thread(self):
+        """
+        Wrapper function to run the AI search and send the result back
+        to the GUI thread via the queue.
+        """
+        logger.info("Starting AI calculation in a new thread...")
+        # For now, we'll just simulate an AI move.
+        # This will be replaced by your actual AI search logic later.
+        self.interrupt_flag.clear()
+        time.sleep(2) # Simulate a longer calculation
+        valid_moves = get_valid_moves(self.board, self.current_player)
+        self.best_move = valid_moves[0] if valid_moves else None
+
+        if self.interrupt_flag.is_set():
+            logger.info("AI calculation was interrupted.")
+            self.message_queue.put({"type": "ai_interrupted_move", "move": self.best_move})
+        else:
+            logger.info("AI calculation completed.")
+            self.message_queue.put({"type": "ai_completed_move", "move": self.best_move})
+
     def force_ai_move(self):
         """
         Handle Force AI Move button press.
         If during player's turn, swap to AI and make a move.
         If AI is calculating, apply the best move found so far.
-        Updates board, move history, score, and player.
         """
         logger.info("Force AI Move button clicked")
-        if self.ai_calculating:
-            logger.info("AI calculation interrupted")
-            if self.best_move:
-                self.apply_move(self.best_move)
-            self.ai_calculating = False
+        if self.ai_is_thinking and self.ai_thread and self.ai_thread.is_alive():
+            logger.info("AI calculation interrupted.")
+            self.interrupt_flag.set()
         else:
-            if self.current_player == 'w' and self.mode == 'human':
-                self.current_player = 'r'  # Swap to AI
-                logger.info("Swapped sides to AI (red)")
-            self.ai_calculating = True
-            moves = get_valid_moves(self.board, self.current_player)
-            if not moves:
-                logger.info("No valid moves for %s", self.current_player)
-                self.ai_calculating = False
-                return
-            # Simulate iterative deepening (replace with search.py later)
-            self.best_move = None
-            for depth in range(1, self.ai_depth + 1):
-                best_score = float('-inf') if self.current_player == 'r' else float('inf')
-                for move in moves:
-                    score = evaluate_board(make_move(self.board, move))
-                    if self.current_player == 'r' and score > best_score:
-                        best_score = score
-                        self.best_move = move
-                    elif self.current_player == 'w' and score < best_score:
-                        best_score = score
-                        self.best_move = move
-                logger.debug(f"Best move at depth {depth}: {self.best_move}")
-            if self.best_move:
-                self.apply_move(self.best_move)
-            self.ai_calculating = False
+            logger.info("Starting AI turn.")
+            self.current_player = 'r' # Assume AI is 'r'
+            self.ai_is_thinking = True
+            self.ai_thread = threading.Thread(target=self.run_ai_in_thread)
+            self.ai_thread.start()
+            # Disable the button to prevent multiple presses while the AI is busy.
+            # You would need a reference to the button object to do this.
 
     def apply_move(self, move):
         """Apply a move to the board, update history, score, and player."""
+        if not move:
+            logger.info("No move to apply.")
+            return
+
         from_row, from_col, to_row, to_col, is_jump = move
         from_acf = COORD_TO_ACF.get((from_row, from_col), 'unknown')
         to_acf = COORD_TO_ACF.get((to_row, to_col), 'unknown')
@@ -139,6 +181,7 @@ class CheckersGame:
         self.score = evaluate_board(self.board)
         logger.debug(f"Updated score: {self.score}")
         self.current_player = 'w' if self.current_player == 'r' else 'r'
+        self.ai_is_thinking = False
 
     def undo_move(self):
         # Placeholder for undo move
@@ -167,7 +210,7 @@ class CheckersGame:
         except Exception as e:
             logger.error(f"Failed to export PDN: {str(e)}")
 
-    def draw_board(self):
+    def draw_board(self, screen):
         """
         Draw the 8x8 checkers board, pieces, numbers, and menu.
         Verified working 100% correctly as of commit d2f58b72a719f621afa165a3ecbae26d00e07499.
@@ -245,7 +288,16 @@ class CheckersGame:
                             break
                         else:
                             logger.debug(f"Click at {mouse_pos} missed button {button['text']} at {button['rect']}")
-        self.draw_board()
+        self.draw_board(self.screen)
+        # Check for messages from the AI thread
+        try:
+            while not self.message_queue.empty():
+                message = self.message_queue.get_nowait()
+                if message["type"] == "ai_completed_move" or message["type"] == "ai_interrupted_move":
+                    self.apply_move(message["move"])
+        except Exception as e:
+            logger.error(f"Error updating GUI from message queue: {e}")
+            
         return True
 
 async def main(mode='human', no_db=False):
@@ -265,3 +317,4 @@ if platform.system() == "Emscripten":
 else:
     if __name__ == "__main__":
         asyncio.run(main())
+

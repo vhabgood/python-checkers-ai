@@ -1,6 +1,4 @@
-# Assuming this code is being added to a GUI Controller or a main game file.
-# You will need to import your existing classes (CheckersGame, etc.)
-# and your GUI framework (e.g., Tkinter, Pygame).
+#main.py
 
 import pygame
 import threading
@@ -8,7 +6,7 @@ import time
 from queue import Queue
 
 # NOTE: The corrected imports for your project structure.
-from engine.checkers_game import CheckersGame
+from engine.checkers_game import CheckersGame, FPS
 from engine.board import (
     setup_initial_board,
     make_move,
@@ -43,14 +41,33 @@ from engine.constants import (
     EMPTY
 )
 
+# This is a simplified AI for demonstration purposes.
+# The real one is the one you would be importing.
+class CheckersAI:
+    def __init__(self, game_state):
+        self.game_state = game_state
+        self.interrupt_flag = threading.Event()
+        self.best_move_found = None
+        
+    def find_best_move(self, depth_limit=10):
+        self.interrupt_flag.clear()
+        self.best_move_found = None
+        for current_depth in range(1, depth_limit + 1):
+            if self.interrupt_flag.is_set():
+                return self.best_move_found
+            time.sleep(1) 
+            valid_moves = get_valid_moves(self.game_state.board, 'r')
+            if valid_moves:
+                self.best_move_found = valid_moves[0]
+        return self.best_move_found
+
 # --- Main Class (from your repository) ---
 class Checkers:
     def __init__(self, screen):
         self.screen = screen
         self.running = True
-        # NOTE: Your constants file doesn't have FPS. Let's use a standard value.
         self.FPS = pygame.time.Clock()
-        self.fps_value = 60 # You can adjust this value as needed.
+        self.fps_value = FPS
         
         # --- This is the key change to fix the AttributeError ---
         initial_board_state = setup_initial_board()
@@ -66,11 +83,8 @@ class Checkers:
         self.message_queue = Queue()
 
     def _draw(self, board):
-        # This function likely needs to be updated to handle the board as a data structure
-        # instead of a class object.
-        # For now, we will assume your game.draw() method handles this.
-        # board.draw(self.screen)
-        pygame.display.update()
+        # This function is now redundant as we will call the method in the CheckersGame class.
+        pass
 
     # --- New methods for AI and button logic ---
     def update_gui(self):
@@ -129,29 +143,27 @@ class Checkers:
         
         while self.running:
             self.FPS.tick(self.fps_value)
-            self.game.draw()
             
-            # --- This is where you would call the new update_gui method ---
-            self.update_gui()
+            # --- This is the key change to fix the AttributeError ---
+            # NOTE: We're calling the update loop from the CheckersGame class.
+            # It already handles all the events.
+            if not self.game.update_loop():
+                self.running = False
             
             # This is where your original event loop would be.
-            # You would need to add a line to call self.force_ai_move()
-            # when the button is clicked.
-            # For example:
-            # if event.type == pygame.MOUSEBUTTONDOWN and force_ai_button.rect.collidepoint(event.pos):
-            #    self.force_ai_move()
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    self.game.handle_click(pygame.mouse.get_pos())
-
-            self._draw(self.game.board)
+            # The game loop now handles everything.
+            
+            # This line is now redundant and removed.
+            # self.game.handle_click(pygame.mouse.get_pos())
+            # and
+            # self.game.draw()
+            
+            # This line is now redundant.
+            # self._draw(self.game.board)
 
 # --- Your main execution block ---
 if __name__ == "__main__":
-    window_size = (640, 640)
+    window_size = (640, 480)
     pygame.init()
     screen = pygame.display.set_mode(window_size)
     pygame.display.set_caption("Checkers")
