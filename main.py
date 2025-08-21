@@ -1,5 +1,5 @@
 # Assuming this code is being added to a GUI Controller or a main game file.
-# You will need to import your existing classes (Board, CheckersGame, etc.)
+# You will need to import your existing classes (CheckersGame, etc.)
 # and your GUI framework (e.g., Tkinter, Pygame).
 
 import pygame
@@ -7,41 +7,57 @@ import threading
 import time
 from queue import Queue
 
-# NOTE: The correct import is CheckersGame, not Checkers.
+# NOTE: The corrected imports for your project structure.
 from engine.checkers_game import CheckersGame
-from engine.board import Board
+from engine.board import (
+    setup_initial_board,
+    make_move,
+    get_valid_moves,
+    count_pieces
+)
 from engine.search import CheckersAI
-from engine.constants import Constants
-
-# This is a simplified AI for demonstration purposes.
-# The real one is the one you would be importing.
-class CheckersAI:
-    def __init__(self, game_state):
-        self.game_state = game_state
-        self.interrupt_flag = threading.Event()
-        self.best_move_found = None
-        
-    def find_best_move(self, depth_limit=10):
-        self.interrupt_flag.clear()
-        self.best_move_found = None
-        for current_depth in range(1, depth_limit + 1):
-            if self.interrupt_flag.is_set():
-                return self.best_move_found
-            time.sleep(1) 
-            valid_moves = self.game_state.get_valid_moves()
-            if valid_moves:
-                self.best_move_found = valid_moves[0]
-        return self.best_move_found
+from engine.constants import (
+    BOARD_SIZE,
+    INFO_WIDTH,
+    SQUARE_SIZE,
+    PIECE_RADIUS,
+    PLAYER_NAMES,
+    FUTILITY_MARGIN,
+    COORD_TO_ACF,
+    ACF_TO_COORD,
+    COLOR_RED_P,
+    COLOR_WHITE_P,
+    COLOR_LIGHT_SQUARE,
+    COLOR_DARK_SQUARE,
+    COLOR_HIGHLIGHT,
+    COLOR_SELECTED,
+    COLOR_CROWN,
+    COLOR_TEXT,
+    COLOR_BG,
+    COLOR_BUTTON,
+    COLOR_BUTTON_HOVER,
+    RED,
+    WHITE,
+    RED_KING,
+    WHITE_KING,
+    EMPTY
+)
 
 # --- Main Class (from your repository) ---
 class Checkers:
     def __init__(self, screen):
         self.screen = screen
         self.running = True
+        # NOTE: Your constants file doesn't have FPS. Let's use a standard value.
         self.FPS = pygame.time.Clock()
+        self.fps_value = 60 # You can adjust this value as needed.
         
-        # You will need to import your actual CheckersGame and CheckersAI classes
+        # --- This is the key change to fix the AttributeError ---
+        initial_board_state = setup_initial_board()
         self.game = CheckersGame(self.screen)
+        self.game.board = initial_board_state
+        # --- End of key change ---
+
         self.ai = CheckersAI(self.game)
 
         # --- New variables for AI and threading ---
@@ -50,7 +66,10 @@ class Checkers:
         self.message_queue = Queue()
 
     def _draw(self, board):
-        board.draw(self.screen)
+        # This function likely needs to be updated to handle the board as a data structure
+        # instead of a class object.
+        # For now, we will assume your game.draw() method handles this.
+        # board.draw(self.screen)
         pygame.display.update()
 
     # --- New methods for AI and button logic ---
@@ -64,8 +83,10 @@ class Checkers:
                 message = self.message_queue.get_nowait()
                 print(f"GUI received message: {message}")
                 if message["type"] == "ai_move":
-                    self.game.make_move(message["move"])
-                    # You would also update the GUI board here to reflect the move.
+                    # Call the move function with the game's current board and the new move.
+                    self.game.board = make_move(self.game.board, message["move"])
+                    # Now you would need to tell your game to update the visual board
+                    # to reflect the new state. This would likely involve a draw call.
                     self.ai_is_thinking = False
                     
                     # Update a GUI button's state, e.g., enable it again.
@@ -105,10 +126,9 @@ class Checkers:
 
     def main(self, window_width, window_height):
         # Your original main game loop.
-        self.game.setup()
         
         while self.running:
-            self.FPS.tick(Constants.FPS)
+            self.FPS.tick(self.fps_value)
             self.game.draw()
             
             # --- This is where you would call the new update_gui method ---
