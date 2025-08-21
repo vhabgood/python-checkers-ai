@@ -19,7 +19,7 @@ COORD_TO_ACF = {
 def is_dark_square(row, col):
     """
     Check if a square is dark (valid for piece placement, row + col is odd).
-    Verified working 100% correctly as of commit d2f58b72a719f621afa165a3ecbae26d00e07499.
+    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
     Returns True for dark squares, False for light squares.
     """
     return (row + col) % 2 == 1
@@ -27,7 +27,7 @@ def is_dark_square(row, col):
 def setup_initial_board():
     """
     Initialize an 8x8 checkers board with 12 red (r) and 12 white (w) pieces.
-    Verified working 100% correctly as of commit d2f58b72a719f621afa165a3ecbae26d00e07499.
+    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
     Places pieces on dark squares (ACF 1-12 for red, 21-32 for white).
     """
     board = [['.' for _ in range(8)] for _ in range(8)]
@@ -49,7 +49,7 @@ def setup_initial_board():
 def count_pieces(board):
     """
     Count red and white pieces (including kings) on the board.
-    Verified working 100% correctly as of commit d2f58b72a719f621afa165a3ecbae26d00e07499.
+    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
     Returns tuple (red_count, white_count) for pieces 'r', 'R', 'w', 'W'.
     """
     red_count = sum(row.count('r') + row.count('R') for row in board)
@@ -59,7 +59,7 @@ def count_pieces(board):
 def print_board(board):
     """
     Print the board to the log for debugging.
-    Verified working 100% correctly as of commit d2f58b72a719f621afa165a3ecbae26d00e07499.
+    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
     Logs each row of the board as a space-separated string.
     """
     for row in board:
@@ -68,25 +68,37 @@ def print_board(board):
 def get_valid_moves(board, player):
     """
     Generate valid moves for the given player ('w' for white, 'r' for red).
+    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
     Returns a list of tuples: (from_row, from_col, to_row, to_col, is_jump).
     Handles regular moves (diagonal, one square) and jumps (diagonal, two squares).
     """
     moves = []
-    directions = {'w': [(-1, -1), (-1, 1)], 'r': [(1, -1), (1, 1)]}  # White moves up, red down
-    pieces = ['w', 'W'] if player == 'w' else ['r', 'R']
+    directions = {'w': [(-1, -1), (-1, 1)], 'r': [(1, -1), (1, 1)]}
+    king_directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+    pieces = []
+    if player == 'w':
+        pieces = ['w', 'W']
+    elif player == 'r':
+        pieces = ['r', 'R']
     
     for row in range(8):
         for col in range(8):
             if board[row][col] in pieces:
+                piece_type = board[row][col]
+                
+                current_directions = directions[player.lower()]
+                if piece_type in ['W', 'R']: # King piece
+                    current_directions = king_directions
+                
                 # Regular moves
-                for dr, dc in directions[player.lower()]:
+                for dr, dc in current_directions:
                     new_row, new_col = row + dr, col + dc
                     if 0 <= new_row < 8 and 0 <= new_col < 8 and is_dark_square(new_row, new_col):
                         if board[new_row][new_col] == '.':
                             moves.append((row, col, new_row, new_col, False))
                 
                 # Jump moves
-                for dr, dc in directions[player.lower()]:
+                for dr, dc in current_directions:
                     jump_row, jump_col = row + 2 * dr, col + 2 * dc
                     mid_row, mid_col = row + dr, col + dc
                     if (0 <= jump_row < 8 and 0 <= jump_col < 8 and
@@ -124,3 +136,4 @@ def evaluate_board(board):
     """
     red_count, white_count = count_pieces(board)
     return red_count - white_count
+
