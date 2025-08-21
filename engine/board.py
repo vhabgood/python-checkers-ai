@@ -5,14 +5,16 @@ import logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('board')
 
-# Mapping of (row, col) coordinates to ACF square numbers (dark squares only)
+# Mapping of (row, col) coordinates to ACF square numbers (dark squares only, odd sum)
 COORD_TO_ACF = {
-    (5,1): 12, (5,3): 11, (5,5): 10, (5,7): 9,
-    (6,0): 8, (6,2): 7, (6,4): 6, (6,6): 5,
-    (7,1): 4, (7,3): 3, (7,5): 2, (7,7): 1,
-    (0,0): 32, (0,2): 31, (0,4): 30, (0,6): 29,
-    (1,1): 28, (1,3): 27, (1,5): 26, (1,7): 25,
-    (2,0): 24, (2,2): 23, (2,4): 22, (2,6): 21
+    (0,1): 32, (0,3): 31, (0,5): 30, (0,7): 29,
+    (1,0): 28, (1,2): 27, (1,4): 26, (1,6): 25,
+    (2,1): 24, (2,3): 23, (2,5): 22, (2,7): 21,
+    (3,0): 20, (3,2): 19, (3,4): 18, (3,6): 17,
+    (4,1): 16, (4,3): 15, (4,5): 14, (4,7): 13,
+    (5,0): 12, (5,2): 11, (5,4): 10, (5,6): 9,
+    (6,1): 8, (6,3): 7, (6,5): 6, (6,7): 5,
+    (7,0): 4, (7,2): 3, (7,4): 2, (7,6): 1
 }
 
 def is_dark_square(row, col):

@@ -31,7 +31,7 @@ class CheckersGame:
             {'text': 'Undo Move', 'rect': pygame.Rect(490, 240, 100, 30), 'action': self.undo_move},
             {'text': 'Restart Game', 'rect': pygame.Rect(490, 280, 100, 30), 'action': self.reset_board},
             {'text': 'Export PDN', 'rect': pygame.Rect(490, 320, 100, 30), 'action': self.export_pdn},
-            {'text': 'Toggle Numbers', 'rect': pygame.Rect(490, 360, 100, 30), 'action': self.toggle_numbers},
+            {'text': 'Board Numbers', 'rect': pygame.Rect(490, 360, 100, 30), 'action': self.toggle_numbers},
             {'text': 'Dev Mode: Off', 'rect': pygame.Rect(490, 400, 100, 30), 'action': self.toggle_dev_mode}
         ]
         logger.info("CheckersGame initialized with mode: %s, no-db: %s", mode, no_db)
@@ -39,8 +39,9 @@ class CheckersGame:
         logger.debug(f"Initial piece count: Red={red_count}, White={white_count}")
         for row in range(8):
             for col in range(8):
-                if self.board[row][col] in ['r', 'w', 'R', 'W']:
-                    logger.debug(f"Board state: {self.board[row][col]} at ({row},{col})")
+                piece = self.board[row][col]
+                if piece in ['r', 'w', 'R', 'W']:
+                    logger.debug(f"Board state: {piece} at ({row},{col})")
 
     def reset_board(self):
         # Reset the board to initial state
@@ -58,13 +59,11 @@ class CheckersGame:
     def force_ai_move(self):
         # Placeholder for AI move
         logger.info("Force AI move triggered (not implemented)")
-        # To be implemented in gameplay fix
 
     def undo_move(self):
         # Placeholder for undo move
         if self.move_history:
             logger.info("Undo move triggered (not implemented)")
-            # To be implemented in gameplay fix
         else:
             logger.debug("No moves to undo")
 
@@ -87,7 +86,7 @@ class CheckersGame:
     def toggle_numbers(self):
         # Toggle ACF number visibility
         self.show_numbers = not self.show_numbers
-        logger.info(f"ACF numbers {'shown' if self.show_numbers else 'hidden'}")
+        logger.info(f"Board numbers {'shown' if self.show_numbers else 'hidden'}")
 
     def toggle_dev_mode(self):
         # Toggle developer mode
@@ -104,9 +103,11 @@ class CheckersGame:
         score_text = self.font.render("Score: 0-0", True, (0, 0, 0))
         self.screen.blit(score_text, (490, 80))
         red_count, white_count = count_pieces(self.board)
-        piece_text = self.font.render(f"Piece: {red_count}+0 red, {white_count}+0 white", True, (0, 0, 0))
-        self.screen.blit(piece_text, (490, 120))
-        ply_text = self.font.render(f"AI Ply: {self.ai_ply}", True, (0, 0, 0))
+        red_text = self.font.render(f"Red: {red_count}+0", True, (0, 0, 0))
+        white_text = self.font.render(f"White: {white_count}+0", True, (0, 0, 0))
+        self.screen.blit(red_text, (490, 120))
+        self.screen.blit(white_text, (490, 140))
+        ply_text = self.font.render(f"AI Depth: {self.ai_ply}", True, (0, 0, 0))
         self.screen.blit(ply_text, (490, 160))
         for button in self.buttons:
             pygame.draw.rect(self.screen, (100, 100, 100), button['rect'])
@@ -125,10 +126,11 @@ class CheckersGame:
                 piece = self.board[row][col]
                 if piece in ['r', 'w', 'R', 'W']:
                     piece_color = (200, 0, 0) if piece.lower() == 'r' else (255, 255, 255)
-                    pygame.draw.circle(self.screen, piece_color, 
-                                       (x + self.square_size // 2, y + self.square_size // 2), 
-                                       self.square_size // 2 - 5)
-                    logger.debug(f"Drawing piece {piece} at ({row},{col})")
+                    center_x = x + self.square_size // 2
+                    center_y = y + self.square_size // 2
+                    radius = self.square_size // 2 - 5
+                    pygame.draw.circle(self.screen, piece_color, (center_x, center_y), radius)
+                    logger.debug(f"Drawing piece {piece} at ({row},{col}), pos ({center_x},{center_y})")
                 # Draw ACF numbers on dark squares if enabled
                 if self.show_numbers and (row, col) in COORD_TO_ACF:
                     acf = COORD_TO_ACF[(row, col)]
@@ -150,8 +152,11 @@ class CheckersGame:
                 return False
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
+                    mouse_pos = event.pos
+                    logger.debug(f"Mouse click at {mouse_pos}")
                     for button in self.buttons:
-                        if button['rect'].collidepoint(event.pos):
+                        if button['rect'].collidepoint(mouse_pos):
+                            logger.info(f"Button clicked: {button['text']}")
                             button['action']()
                             break
         self.draw_board()
