@@ -7,9 +7,34 @@ import sys
 import os
 
 # NOTE: The corrected imports for your project structure.
-from engine.checkers_game import CheckersGame
+from engine.checkers_game import CheckersGame, FPS
 from game_states import LoadingScreen, PlayerSelectionScreen
-from engine.constants import FPS
+from engine.constants import (
+    BOARD_SIZE,
+    INFO_WIDTH,
+    SQUARE_SIZE,
+    PIECE_RADIUS,
+    PLAYER_NAMES,
+    FUTILITY_MARGIN,
+    COORD_TO_ACF,
+    ACF_TO_COORD,
+    COLOR_RED_P,
+    COLOR_WHITE_P,
+    COLOR_LIGHT_SQUARE,
+    COLOR_DARK_SQUARE,
+    COLOR_HIGHLIGHT,
+    COLOR_SELECTED,
+    COLOR_CROWN,
+    COLOR_TEXT,
+    COLOR_BG,
+    COLOR_BUTTON,
+    COLOR_BUTTON_HOVER,
+    RED,
+    WHITE,
+    RED_KING,
+    WHITE_KING,
+    EMPTY
+)
 
 # --- Logging Configuration ---
 # NOTE: Restored logging configuration to the main file.

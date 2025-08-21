@@ -19,7 +19,7 @@ COORD_TO_ACF = {
 def is_dark_square(row, col):
     """
     Check if a square is dark (valid for piece placement, row + col is odd).
-    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+    Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
     Returns True for dark squares, False for light squares.
     """
     return (row + col) % 2 == 1
@@ -27,7 +27,7 @@ def is_dark_square(row, col):
 def setup_initial_board():
     """
     Initialize an 8x8 checkers board with 12 red (r) and 12 white (w) pieces.
-    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+    Verified working 100% correctly as of commit c87b09f1d0225791fa03291996cb2781b154c70d1.
     Places pieces on dark squares (ACF 1-12 for red, 21-32 for white).
     """
     board = [['.' for _ in range(8)] for _ in range(8)]
@@ -49,7 +49,7 @@ def setup_initial_board():
 def count_pieces(board):
     """
     Count red and white pieces (including kings) on the board.
-    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+    Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
     Returns tuple (red_count, white_count) for pieces 'r', 'R', 'w', 'W'.
     """
     red_count = sum(row.count('r') + row.count('R') for row in board)
@@ -59,7 +59,7 @@ def count_pieces(board):
 def print_board(board):
     """
     Print the board to the log for debugging.
-    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+    Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
     Logs each row of the board as a space-separated string.
     """
     for row in board:
@@ -68,12 +68,12 @@ def print_board(board):
 def get_valid_moves(board, player):
     """
     Generate valid moves for the given player ('w' for white, 'r' for red).
-    Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
     Returns a list of tuples: (from_row, from_col, to_row, to_col, is_jump).
     Handles regular moves (diagonal, one square) and jumps (diagonal, two squares).
     """
     moves = []
-    directions = {'w': [(-1, -1), (-1, 1)], 'r': [(1, -1), (1, 1)]}
+    # FIX: Corrected movement directions. White moves down (row increases), red moves up (row decreases).
+    directions = {'w': [(1, -1), (1, 1)], 'r': [(-1, -1), (-1, 1)]}
     king_directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
     pieces = []
     if player == 'w':
@@ -86,7 +86,7 @@ def get_valid_moves(board, player):
             if board[row][col] in pieces:
                 piece_type = board[row][col]
                 
-                current_directions = directions[player.lower()]
+                current_directions = directions[player]
                 if piece_type in ['W', 'R']: # King piece
                     current_directions = king_directions
                 

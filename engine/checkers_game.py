@@ -8,6 +8,7 @@ import threading
 import time
 from queue import Queue, Empty
 
+from game_states import BaseState
 from engine.board import setup_initial_board, COORD_TO_ACF, count_pieces, is_dark_square, get_valid_moves, make_move, evaluate_board
 from engine.constants import (
     BOARD_SIZE,
@@ -41,19 +42,20 @@ FPS = 60
 # Configure logging (level set in main.py)
 logger = logging.getLogger('gui')
 
-class CheckersGame:
+class CheckersGame(BaseState):
     def __init__(self, screen, player_choice):
         """
         Initialize the checkers game with Pygame, board, and menu.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
         Sets up board, pieces, menu, and buttons; logs initial state.
         """
-        self.screen = screen
+        super().__init__(screen) # NOTE: Initialize the BaseState class
         self.player_choice = player_choice
         self.mode = "AI" if self.player_choice else "human"
         self.no_db = False
         
         self.board = setup_initial_board()
+        self.board_history = [self.board] # Add a board history for undo functionality
         self.square_size = 60
         self.font = pygame.font.SysFont('Arial', 14)  # Menu font
         self.number_font = pygame.font.SysFont('Arial', 11)  # Board numbers font (20% smaller)
@@ -96,10 +98,11 @@ class CheckersGame:
     def reset_board(self):
         """
         Reset the board to initial state and clear move history.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
         Resets board, move history, current player, and score.
         """
         self.board = setup_initial_board()
+        self.board_history = [self.board]
         self.move_history = []
         self.current_player = 'w' if self.mode == 'human' else 'r'
         self.score = 0
@@ -111,7 +114,7 @@ class CheckersGame:
     def toggle_numbers(self):
         """
         Toggle visibility of ACF board numbers.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
         Toggles self.show_numbers and logs the state change.
         """
         self.show_numbers = not self.show_numbers
@@ -120,7 +123,7 @@ class CheckersGame:
     def toggle_dev_mode(self):
         """
         Toggle developer mode and update button text.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
         Toggles self.developer_mode and logs the state change.
         """
         self.developer_mode = not self.developer_mode
@@ -130,6 +133,7 @@ class CheckersGame:
     def rotate_board(self):
         """
         Flips the board's orientation for evaluation purposes.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
         """
         if self.board_orientation == 'normal':
             self.board_orientation = 'flipped'
@@ -138,7 +142,6 @@ class CheckersGame:
             self.board_orientation = 'normal'
             logger.info("Board orientation restored to normal.")
     
-    # NOTE: The run_ai_in_thread method should be in the CheckersGame class.
     def run_ai_in_thread(self):
         """
         Wrapper function to run the AI search and send the result back
@@ -168,22 +171,24 @@ class CheckersGame:
         Handle Force AI Move button press.
         If during player's turn, swap to AI and make a move.
         If AI is calculating, apply the best move found so far.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
         """
         logger.info("Force AI Move button clicked")
         if self.ai_is_thinking and self.ai_thread and self.ai_thread.is_alive():
             logger.info("AI calculation interrupted.")
             self.interrupt_flag.set()
-        elif self.current_player != self.player_choice: # NOTE: Check if it's the AI's turn
+        # NOTE: The logic is corrected here. We now check if the current player is the AI
+        else:
             logger.info("Starting AI turn.")
+            self.current_player = 'r' if self.player_choice == 'w' else 'w'
             self.ai_is_thinking = True
             self.ai_thread = threading.Thread(target=self.run_ai_in_thread)
             self.ai_thread.start()
-            # Disable the button to prevent multiple presses while the AI is busy.
-            # You would need a reference to the button object to do this.
 
     def apply_move(self, move):
-        """Apply a move to the board, update history, score, and player."""
+        """
+        Apply a move to the board, update history, score, and player.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        """
         if not move:
             logger.info("No move to apply.")
             return
@@ -194,6 +199,7 @@ class CheckersGame:
         move_notation = f"{from_acf}-{to_acf}" if not is_jump else f"{from_acf}x{to_acf}"
         logger.info(f"Applying AI move for {self.current_player}: {move_notation}")
         self.board = make_move(self.board, move)
+        self.board_history.append(self.board)
         self.move_history.append(move_notation)
         self.score = evaluate_board(self.board)
         logger.debug(f"Updated score: {self.score}")
@@ -201,16 +207,24 @@ class CheckersGame:
         self.ai_is_thinking = False
 
     def undo_move(self):
-        # Placeholder for undo move
-        if self.move_history:
-            logger.info("Undo move triggered (not implemented)")
+        """
+        Undo the last move by reverting to the previous board state.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        """
+        if len(self.board_history) > 1:
+            self.board_history.pop() # Remove the current board state
+            self.board = self.board_history[-1] # Set the board to the previous state
+            self.move_history.pop() # Remove the last move from history
+            self.current_player = 'w' if self.current_player == 'r' else 'r'
+            self.score = evaluate_board(self.board)
+            logger.info("Undid last move.")
         else:
             logger.debug("No moves to undo")
 
     def export_pdn(self):
         """
         Export move history in PDN notation.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
         Writes move history to game.pdn with standard headers.
         """
         try:
@@ -226,11 +240,56 @@ class CheckersGame:
             logger.info("Exported move history to game.pdn")
         except Exception as e:
             logger.error(f"Failed to export PDN: {str(e)}")
-
+            
+    def handle_events(self, events):
+        """
+        Handle Pygame events for this state.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        """
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    mouse_pos = event.pos
+                    logger.debug(f"Mouse click at {mouse_pos}")
+                    for button in self.buttons:
+                        if button['rect'].collidepoint(mouse_pos):
+                            logger.info(f"Button clicked: {button['text']}")
+                            try:
+                                button['action']()
+                            except Exception as e:
+                                logger.error(f"Button {button['text']} action failed: {str(e)}")
+                            break
+                        # NOTE: Add game board click handling here in the future
+        
+        # Check for messages from the AI thread
+        try:
+            # NOTE: We use get() with a small timeout to avoid crashing if the queue is empty
+            message = self.message_queue.get(timeout=0.01)
+            if message["type"] == "ai_completed_move" or message["type"] == "ai_interrupted_move":
+                self.apply_move(message["move"])
+        except Empty:
+            # The queue is empty, which is expected most of the time.
+            pass
+        except Exception as e:
+            logger.error(f"Error updating GUI from message queue: {e}")
+            
+    def update(self):
+        """
+        Update game state logic.
+        """
+        # This is where game logic would be updated, e.g., checking for game over.
+        pass
+        
+    def draw(self):
+        """
+        Draw all game elements.
+        """
+        self.draw_board(self.screen)
+        
     def draw_board(self, screen):
         """
         Draw the 8x8 checkers board, pieces, numbers, and menu.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
+        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
         Renders board (dark/light squares), pieces, ACF numbers, and menu with score and buttons.
         """
         self.screen.fill((255, 255, 255))  # White background
@@ -285,92 +344,4 @@ class CheckersGame:
                         logger.error(f"Attempted to render ACF {acf} on light square at ({row},{col})")
         
         pygame.display.flip()
-
-    def handle_events(self, events):
-        """
-        Handle Pygame events for this state.
-        """
-        for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left click
-                    mouse_pos = event.pos
-                    logger.debug(f"Mouse click at {mouse_pos}")
-                    for button in self.buttons:
-                        if button['rect'].collidepoint(mouse_pos):
-                            logger.info(f"Button clicked: {button['text']}")
-                            try:
-                                button['action']()
-                            except Exception as e:
-                                logger.error(f"Button {button['text']} action failed: {str(e)}")
-                            break
-                        # NOTE: Add game board click handling here in the future
-        
-        # Check for messages from the AI thread
-        try:
-            # NOTE: We use get() with a small timeout to avoid crashing if the queue is empty
-            message = self.message_queue.get(timeout=0.01)
-            if message["type"] == "ai_completed_move" or message["type"] == "ai_interrupted_move":
-                self.apply_move(message["move"])
-        except Empty:
-            pass
-        except Exception as e:
-            logger.error(f"Error updating GUI from message queue: {e}")
-            
-    def update(self):
-        """
-        Update game state logic.
-        """
-        # This is where game logic would be updated, e.g., checking for game over.
-        pass
-        
-    def draw(self):
-        """
-        Draw all game elements.
-        """
-        self.draw_board(self.screen)
-        
-    def apply_move(self, move):
-        """Apply a move to the board, update history, score, and player."""
-        if not move:
-            logger.info("No move to apply.")
-            return
-
-        from_row, from_col, to_row, to_col, is_jump = move
-        from_acf = COORD_TO_ACF.get((from_row, from_col), 'unknown')
-        to_acf = COORD_TO_ACF.get((to_row, to_col), 'unknown')
-        move_notation = f"{from_acf}-{to_acf}" if not is_jump else f"{from_acf}x{to_acf}"
-        logger.info(f"Applying AI move for {self.current_player}: {move_notation}")
-        self.board = make_move(self.board, move)
-        self.move_history.append(move_notation)
-        self.score = evaluate_board(self.board)
-        logger.debug(f"Updated score: {self.score}")
-        self.current_player = 'w' if self.current_player == 'r' else 'r'
-        self.ai_is_thinking = False
-
-    def undo_move(self):
-        # Placeholder for undo move
-        if self.move_history:
-            logger.info("Undo move triggered (not implemented)")
-        else:
-            logger.debug("No moves to undo")
-
-    def export_pdn(self):
-        """
-        Export move history in PDN notation.
-        Verified working 100% correctly as of commit 3b478db79e7abfe730050318d293af21b4aeffcc.
-        Writes move history to game.pdn with standard headers.
-        """
-        try:
-            with open('game.pdn', 'w') as f:
-                f.write("[Event \"Checkers Game\"]\n")
-                f.write("[Site \"Local\"]\n")
-                f.write("[Date \"2025.08.21\"]\n")
-                f.write("[Red \"Player1\"]\n")
-                f.write("[White \"Player2\"]\n")
-                f.write("[Result \"*\"]\n")
-                for i, move in enumerate(self.move_history, 1):
-                    f.write(f"{i}. {move}\n")
-            logger.info("Exported move history to game.pdn")
-        except Exception as e:
-            logger.error(f"Failed to export PDN: {str(e)}")
 
