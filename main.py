@@ -100,6 +100,16 @@ class StateManager:
             # Handle state transitions
             if self.current_state.done:
                 next_state_name = self.current_state.next_state
+                
+                # If there is no next state, the game is over.
+                if next_state_name is None:
+                    # Allow the final 'Game Over' screen to show for a few seconds
+                    self.current_state.draw()
+                    pygame.display.flip()
+                    pygame.time.wait(3000) # Wait 3 seconds
+                    self.running = False
+                    continue # Skip to next loop iteration to exit cleanly
+
                 if next_state_name == "game":
                     player_choice = self.current_state.player_choice
                     self.states["game"] = CheckersGame(self.screen, player_choice)

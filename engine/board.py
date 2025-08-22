@@ -1,7 +1,10 @@
 # engine/board.py
 import pygame
-from .constants import BLACK, RED, WHITE, SQUARE_SIZE, ROWS, COLS
+import logging
+from .constants import BLACK, RED, WHITE, SQUARE_SIZE, COLS, ROWS, BOARD_SIZE
 from .piece import Piece
+
+logger = logging.getLogger('board')
 
 class Board:
     def __init__(self):
@@ -9,6 +12,28 @@ class Board:
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
         self.create_board()
+        logger.debug("Board initialized.")
+        self.print_board_state()
+
+    def print_board_state(self):
+        """Prints the board state to the debug log."""
+        board_str = "\n"
+        for row_idx, row in enumerate(self.board):
+            row_str = f"Row {row_idx}: "
+            for piece in row:
+                if piece == 0:
+                    row_str += "  . "
+                else:
+                    color_char = '?'
+                    if piece.color == RED:
+                        color_char = 'R'
+                    elif piece.color == WHITE:
+                        color_char = 'W'
+                    
+                    king_char = 'K' if piece.king else 'M'
+                    row_str += f" {color_char}{king_char} "
+            board_str += row_str + "\n"
+        logger.debug(board_str)
 
     def create_board(self):
         for row in range(ROWS):
@@ -27,8 +52,13 @@ class Board:
     def draw_squares(self, screen):
         screen.fill(BLACK)
         for row in range(ROWS):
-            for col in range(row % 2, COLS, 2):
-                pygame.draw.rect(screen, (200, 200, 200), (row * SQUARE_SIZE, col * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)) # Lighter squares
+            for col in range(COLS):
+                # Corrected drawing to use (col, row) for (x, y)
+                if (row + col) % 2 == 1:
+                    pygame.draw.rect(screen, (181, 136, 99), (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+                else:
+                    pygame.draw.rect(screen, (227, 206, 187), (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+
 
     def get_piece(self, row, col):
         return self.board[row][col]
@@ -43,19 +73,10 @@ class Board:
 
     def move(self, piece, row, col):
         self.board[piece.row][piece.col], self.board[row][col] = self.board[row][col], self.board[piece.row][piece.col]
-        piece.move(row, col)
         
+        # Check for jumps to remove the captured piece
         captured_piece = None
-
-        if row == ROWS - 1 or row == 0:
-            piece.make_king()
-            if piece.color == WHITE:
-                self.white_kings += 1
-            else:
-                self.red_kings += 1
-
-        # Check if it was a jump move to remove the captured piece
-        if abs(piece.row - row) == 2 or abs(piece.col - col) == 2:
+        if abs(piece.row - row) == 2:
             middle_row = (piece.row + row) // 2
             middle_col = (piece.col + col) // 2
             captured = self.board[middle_row][middle_col]
@@ -66,9 +87,18 @@ class Board:
                     self.red_left -= 1
                 else:
                     self.white_left -= 1
+
+        piece.move(row, col)
+        
+        if row == 0 or row == ROWS - 1:
+            if not piece.king:
+                piece.make_king()
+                if piece.color == WHITE:
+                    self.white_kings += 1
+                else:
+                    self.red_kings += 1
         
         return captured_piece
-
 
     def draw(self, screen):
         self.draw_squares(screen)
@@ -79,139 +109,83 @@ class Board:
                     piece.draw(screen)
 
     def get_all_valid_moves_for_color(self, color):
-        """
-        Gets all valid moves for a given color, respecting the global forced jump rule.
-        Returns a dictionary: { (start_row, start_col): [ (end_row, end_col), ... ], ... }
-        """
-        all_possible_moves = {}
-        
-        # First, find all possible jumps for ALL pieces of the given color
-        jumps = {}
+        """Gets all valid moves for a given color, respecting the forced jump rule."""
+        moves = {}
+        # First, find all possible jumps
         for piece in self.get_all_pieces(color):
-            # The keys of the returned dict are the destinations
-            piece_jumps = self._get_jumps_for_piece(piece.row, piece.col)
-            if piece_jumps:
-                jumps[(piece.row, piece.col)] = list(piece_jumps.keys())
-                
-        # If any jump moves exist, they are the only valid moves
-        if jumps:
-            return jumps
+            jumps = self._get_jumps_for_piece(piece.row, piece.col)
+            if jumps:
+                moves[(piece.row, piece.col)] = list(jumps.keys())
+        
+        # If jumps were found, they are the only valid moves
+        if moves:
+            logger.debug(f"Found jumps for {color}: {moves}")
+            return moves
 
         # If no jumps were found, find all possible slides
-        slides = {}
         for piece in self.get_all_pieces(color):
-            piece_slides = self._get_slides_for_piece(piece.row, piece.col)
-            if piece_slides:
-                slides[(piece.row, piece.col)] = list(piece_slides.keys())
+            slides = self._get_slides_for_piece(piece.row, piece.col)
+            if slides:
+                moves[(piece.row, piece.col)] = list(slides.keys())
 
-        return slides
-
+        logger.debug(f"Found slides for {color}: {moves}")
+        return moves
+        
     def _get_slides_for_piece(self, row, col):
         """Calculates all valid slide moves for a single piece."""
-        slides = {}
+        moves = {}
         piece = self.get_piece(row, col)
-        
-        # Directions: up for WHITE, down for RED
-        up = -1
-        down = 1
+        logger.debug(f"Checking slides for piece at ({row}, {col})")
 
+        # Check moves towards top of board (for White men and all Kings)
         if piece.color == WHITE or piece.king:
-            slides.update(self._traverse_left(row + up, max(row - 2, -1), up, piece.color, col - 1, is_slide=True))
-            slides.update(self._traverse_right(row + up, max(row - 2, -1), up, piece.color, col + 1, is_slide=True))
-        if piece.color == RED or piece.king:
-            slides.update(self._traverse_left(row + down, min(row + 2, ROWS), down, piece.color, col - 1, is_slide=True))
-            slides.update(self._traverse_right(row + down, min(row + 2, ROWS), down, piece.color, col + 1, is_slide=True))
+            logger.debug("... checking 'up' moves for White piece.")
+            for r, c in [(row - 1, col - 1), (row - 1, col + 1)]:
+                logger.debug(f"...... checking potential slide to ({r}, {c})")
+                if 0 <= r < ROWS and 0 <= c < COLS:
+                    if self.board[r][c] == 0:
+                        logger.debug(f"......... VALID SLIDE FOUND to ({r}, {c})")
+                        moves[(r, c)] = []
+                    else:
+                        logger.debug(f"......... INVALID: square at ({r}, {c}) is not empty.")
+                else:
+                    logger.debug(f"......... INVALID: square at ({r}, {c}) is off board.")
 
-        return slides
+        # Check moves towards bottom of board (for Red men and all Kings)
+        if piece.color == RED or piece.king:
+            logger.debug("... checking 'down' moves for Red piece.")
+            for r, c in [(row + 1, col - 1), (row + 1, col + 1)]:
+                logger.debug(f"...... checking potential slide to ({r}, {c})")
+                if 0 <= r < ROWS and 0 <= c < COLS:
+                    if self.board[r][c] == 0:
+                        logger.debug(f"......... VALID SLIDE FOUND to ({r}, {c})")
+                        moves[(r, c)] = []
+                    else:
+                        logger.debug(f"......... INVALID: square at ({r}, {c}) is not empty.")
+                else:
+                    logger.debug(f"......... INVALID: square at ({r}, {c}) is off board.")
+        return moves
 
     def _get_jumps_for_piece(self, row, col):
         """Calculates all valid jump moves for a single piece."""
-        jumps = {}
+        moves = {}
         piece = self.get_piece(row, col)
 
-        # Directions: up for WHITE, down for RED
-        up = -1
-        down = 1
-
+        # Check jumps towards top of board (for White men and all Kings)
         if piece.color == WHITE or piece.king:
-            jumps.update(self._traverse_left(row + up, max(row-3, -1), up, piece.color, col-1))
-            jumps.update(self._traverse_right(row + up, max(row-3, -1), up, piece.color, col+1))
+            for (r_mid, c_mid), (r_end, c_end) in [((row - 1, col - 1), (row - 2, col - 2)), ((row - 1, col + 1), (row - 2, col + 2))]:
+                if 0 <= r_end < ROWS and 0 <= c_end < COLS:
+                    mid_piece = self.board[r_mid][c_mid]
+                    end_piece = self.board[r_end][c_end]
+                    if end_piece == 0 and mid_piece != 0 and mid_piece.color != piece.color:
+                        moves[(r_end, c_end)] = [mid_piece]
+        
+        # Check jumps towards bottom of board (for Red men and all Kings)
         if piece.color == RED or piece.king:
-            jumps.update(self._traverse_left(row + down, min(row+3, ROWS), down, piece.color, col-1))
-            jumps.update(self._traverse_right(row + down, min(row+3, ROWS), down, piece.color, col+1))
-        
-        return jumps
-
-    def _traverse_left(self, start, stop, step, color, left, skipped=[], is_slide=False):
-        moves = {}
-        last = []
-        for r in range(start, stop, step):
-            if left < 0:
-                break
-            
-            current = self.board[r][left]
-            if current == 0:
-                if is_slide: # If it's a slide, we can only move one empty space
-                    moves[(r, left)] = []
-                    break
-                
-                if skipped and not last:
-                    break
-                elif skipped:
-                    moves[(r, left)] = last + skipped
-                else:
-                    moves[(r, left)] = last
-                
-                if last:
-                    if step == -1:
-                        row = max(r-3, -1)
-                    else:
-                        row = min(r+3, ROWS)
-                    moves.update(self._traverse_left(r+step, row, step, color, left-1,skipped=moves[(r,left)]))
-                    moves.update(self._traverse_right(r+step, row, step, color, left+1,skipped=moves[(r,left)]))
-                break
-            elif current.color == color:
-                break
-            else:
-                last = [current]
-
-            left -= 1
-        
-        return moves
-
-    def _traverse_right(self, start, stop, step, color, right, skipped=[], is_slide=False):
-        moves = {}
-        last = []
-        for r in range(start, stop, step):
-            if right >= COLS:
-                break
-            
-            current = self.board[r][right]
-            if current == 0:
-                if is_slide: # If it's a slide, we can only move one empty space
-                    moves[(r, right)] = []
-                    break
-
-                if skipped and not last:
-                    break
-                elif skipped:
-                    moves[(r, right)] = last + skipped
-                else:
-                    moves[(r, right)] = last
-                
-                if last:
-                    if step == -1:
-                        row = max(r-3, -1)
-                    else:
-                        row = min(r+3, ROWS)
-                    moves.update(self._traverse_left(r+step, row, step, color, right-1,skipped=moves[(r,right)]))
-                    moves.update(self._traverse_right(r+step, row, step, color, right+1,skipped=moves[(r,right)]))
-                break
-            elif current.color == color:
-                break
-            else:
-                last = [current]
-
-            right += 1
-        
+            for (r_mid, c_mid), (r_end, c_end) in [((row + 1, col - 1), (row + 2, col - 2)), ((row + 1, col + 1), (row + 2, col + 2))]:
+                if 0 <= r_end < ROWS and 0 <= c_end < COLS:
+                    mid_piece = self.board[r_mid][c_mid]
+                    end_piece = self.board[r_end][c_end]
+                    if end_piece == 0 and mid_piece != 0 and mid_piece.color != piece.color:
+                        moves[(r_end, c_end)] = [mid_piece]
         return moves
