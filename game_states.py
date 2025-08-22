@@ -100,9 +100,11 @@ class PlayerSelectionScreen(BaseState):
                 mouse_pos = pygame.mouse.get_pos()
                 for button in self.buttons:
                     if button['rect'].collidepoint(mouse_pos):
-                        self.player_choice = button['player']
+                        # Get the string name ('Red' or 'White') and convert to lowercase
+                        player_color_name = PLAYER_NAMES.get(button['player'])
+                        self.player_choice = player_color_name.lower()
                         self.done = True
-                        logger.info(f"Player selected {PLAYER_NAMES.get(self.player_choice)}.")
+                        logger.info(f"Player selected {player_color_name}.")
 
     def update(self):
         pass

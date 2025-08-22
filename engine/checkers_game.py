@@ -21,11 +21,11 @@ class CheckersGame:
         self.turn = 'white'  # White always starts
         self.selected_piece = None
         self.valid_moves = {}
-        self.game_over = False
-
-        # Correctly load assets after pygame has been initialized
-        constants.CROWN = pygame.transform.scale(pygame.image.load(constants.CROWN_PATH), (44, 25))
-
+        
+        # State machine attributes
+        self.done = False
+        self.next_state = None
+        
         self._update_valid_moves() # Calculate initial valid moves for white
         self.font = pygame.font.SysFont(None, 36)
 
@@ -79,7 +79,7 @@ class CheckersGame:
         self.valid_moves = self.board.get_all_valid_moves_for_color(self.turn)
         logger.debug(f"Valid moves for {self.turn}: {self.valid_moves}")
         if not self.valid_moves:
-            self.game_over = True
+            self.done = True # Set the done flag when game is over
             winner = 'red' if self.turn == 'white' else 'white'
             logger.info(f"Game over! {winner.capitalize()} wins.")
 
@@ -135,7 +135,7 @@ class CheckersGame:
         self._change_turn()
 
     def _handle_click(self, pos):
-        if self.turn == self.player_color and not self.game_over:
+        if self.turn == self.player_color and not self.done:
             row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
             self._select(row, col)
 
@@ -158,7 +158,7 @@ class CheckersGame:
         turn_text = self.font.render(f"{self.turn.capitalize()}'s Turn", True, (255, 255, 255))
         self.screen.blit(turn_text, (10, 10))
         
-        if self.game_over:
+        if self.done:
             winner = 'red' if self.turn == 'white' else 'white'
             end_text = self.font.render(f"{winner.capitalize()} Wins!", True, (0, 255, 0))
             text_rect = end_text.get_rect(center=(self.screen.get_width()/2, self.screen.get_height()/2))

@@ -1,6 +1,7 @@
 # engine/piece.py
 import pygame
-from .constants import RED, WHITE, SQUARE_SIZE, GREY, CROWN
+import math
+from .constants import RED, WHITE, SQUARE_SIZE, GREY, COLOR_CROWN
 
 class Piece:
     PADDING = 15
@@ -30,7 +31,20 @@ class Piece:
         pygame.draw.circle(screen, GREY, (self.x, self.y), radius + self.OUTLINE)
         pygame.draw.circle(screen, self.color, (self.x, self.y), radius)
         if self.king:
-            screen.blit(CROWN, (self.x - CROWN.get_width() // 2, self.y - CROWN.get_height() // 2))
+            self._draw_star(screen)
+
+    def _draw_star(self, screen):
+        """Draws a star in the center of the piece to indicate a king."""
+        star_radius = self.PADDING
+        num_points = 5
+        points = []
+        for i in range(num_points * 2):
+            r = star_radius if i % 2 == 0 else star_radius / 2.5
+            angle = math.pi / num_points * i - math.pi / 2
+            x = self.x + r * math.cos(angle)
+            y = self.y + r * math.sin(angle)
+            points.append((x, y))
+        pygame.draw.polygon(screen, COLOR_CROWN, points)
 
     def move(self, row, col):
         """Updates the piece's position."""

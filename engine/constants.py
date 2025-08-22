@@ -33,10 +33,6 @@ BLACK = (0, 0, 0) # General purpose color
 BLUE = (0, 0, 255)  # General purpose color
 GREY = (128, 128, 128) # General purpose color
 
-# --- Game Asset Paths ---
-CROWN_PATH = 'resources/crown.png'
-CROWN = None
-
 # --- AI and Game Logic Constants ---
 FUTILITY_MARGIN = 300 # Margin for futility pruning in AI
 EMPTY = 0
