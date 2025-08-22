@@ -12,30 +12,11 @@ class Board:
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
         self.create_board()
+        # Font for drawing board numbers
+        self.number_font = pygame.font.SysFont(None, 18)
         logger.debug("Board initialized.")
 
-    def print_board_state(self):
-        """Prints the board state to the debug log."""
-        board_str = "\n"
-        for row_idx, row in enumerate(self.board):
-            row_str = f"Row {row_idx}: "
-            for piece in row:
-                if piece == 0:
-                    row_str += "  . "
-                else:
-                    color_char = '?'
-                    if piece.color == RED:
-                        color_char = 'R'
-                    elif piece.color == WHITE:
-                        color_char = 'W'
-                    
-                    king_char = 'K' if piece.king else 'M'
-                    row_str += f" {color_char}{king_char} "
-            board_str += row_str + "\n"
-        logger.debug(board_str)
-
     def create_board(self):
-        # FIX: Clear the board list before creating a new one
         self.board = []
         for row in range(ROWS):
             self.board.append([])
@@ -50,15 +31,19 @@ class Board:
                 else:
                     self.board[row].append(0)
 
-    def draw_squares(self, screen):
+    def draw_squares(self, screen, show_numbers=False):
         screen.fill(BLACK)
         for row in range(ROWS):
             for col in range(COLS):
+                square_num = (row * 4) + (col // 2) + 1
+                
                 if (row + col) % 2 == 1:
                     pygame.draw.rect(screen, (181, 136, 99), (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+                    if show_numbers:
+                        num_surf = self.number_font.render(str(square_num), True, (255, 255, 255))
+                        screen.blit(num_surf, (col * SQUARE_SIZE + 2, row * SQUARE_SIZE + 2))
                 else:
                     pygame.draw.rect(screen, (227, 206, 187), (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
-
 
     def get_piece(self, row, col):
         return self.board[row][col]
@@ -99,8 +84,8 @@ class Board:
         
         return captured_piece
 
-    def draw(self, screen):
-        self.draw_squares(screen)
+    def draw(self, screen, show_numbers=False):
+        self.draw_squares(screen, show_numbers)
         for row in range(ROWS):
             for col in range(COLS):
                 piece = self.board[row][col]

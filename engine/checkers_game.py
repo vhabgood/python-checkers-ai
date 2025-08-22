@@ -19,15 +19,19 @@ class CheckersGame:
         self.player_color = WHITE if player_color_str == 'white' else RED
         self.ai_color = RED if self.player_color == WHITE else WHITE
         
-        self.turn = WHITE
+        self.turn = RED # Red always starts
         self.selected_piece = None
         self.valid_moves = {}
         
         self.done = False
         self.next_state = None
         
+        # --- Visual Toggles ---
+        self.show_board_numbers = False
+        self.dev_mode = False
+        
+        self.large_font = pygame.font.SysFont(None, 22) 
         self.font = pygame.font.SysFont(None, 24)
-        self.large_font = pygame.font.SysFont(None, 36)
         
         self._create_buttons()
         self._update_valid_moves()
@@ -39,44 +43,59 @@ class CheckersGame:
     def _create_buttons(self):
         """Creates all the UI buttons for the side panel."""
         self.buttons = []
-        panel_x = BOARD_SIZE + 20
+        panel_x = BOARD_SIZE + 10
+        button_width = self.screen.get_width() - BOARD_SIZE - 20
+        button_height = 32 
         
-        # Define button properties (text, callback, y_pos)
         button_defs = [
-            ("Reset Board", self.reset_game, 200),
-            ("Undo Move", self.undo_move, 250),
-            ("Flip Board", self.flip_board, 300),
-            ("Force AI Move", self.force_ai_move, self.screen.get_height() - 60)
-            # Placeholders for toggle buttons
-            # ("Dev Mode: OFF", self.toggle_dev_mode, 350),
-            # ("Board nums: OFF", self.toggle_board_nums, 400),
+            ("Reset Board", self.reset_game, 160),
+            ("Undo Move", self.undo_move, 200),
+            ("Flip Board", self.flip_board, 240),
+            ("Board Nums: OFF", self.toggle_board_numbers, 280),
+            ("Dev Mode: OFF", self.toggle_dev_mode, 320),
+            ("Export to PDN", self.export_to_pdn, 360),
+            ("Force AI Move", self.force_ai_move, self.screen.get_height() - 50)
         ]
         
         for text, callback, y_pos in button_defs:
             button = Button(
                 text,
                 (panel_x, y_pos),
-                (self.screen.get_width() - BOARD_SIZE - 40, 40), # Button width
+                (button_width, button_height),
                 callback
             )
             self.buttons.append(button)
+        
+        self.board_nums_button = self.buttons[3]
+        self.dev_mode_button = self.buttons[4]
 
     # --- Button Callback Methods ---
     def reset_game(self):
         logger.info("Reset Game button clicked.")
         self.board.create_board()
-        self.turn = WHITE
+        self.turn = RED # Red always starts
         self.done = False
         self._update_valid_moves()
 
     def undo_move(self):
-        # Placeholder for undo functionality
         logger.info("Undo Move button clicked (not implemented).")
 
     def flip_board(self):
-        # Placeholder for flip board functionality
         logger.info("Flip Board button clicked (not implemented).")
         
+    def toggle_board_numbers(self):
+        self.show_board_numbers = not self.show_board_numbers
+        self.board_nums_button.text = f"Board Nums: {'ON' if self.show_board_numbers else 'OFF'}"
+        logger.info(f"Board numbers toggled {'ON' if self.show_board_numbers else 'OFF'}.")
+        
+    def toggle_dev_mode(self):
+        self.dev_mode = not self.dev_mode
+        self.dev_mode_button.text = f"Dev Mode: {'ON' if self.dev_mode else 'OFF'}"
+        logger.info(f"Developer mode toggled {'ON' if self.dev_mode else 'OFF'}.")
+        
+    def export_to_pdn(self):
+        logger.info("Export to PDN button clicked (not implemented).")
+
     def force_ai_move(self):
         logger.info("Force AI Move button clicked")
         if self.turn == self.ai_color:
@@ -165,22 +184,22 @@ class CheckersGame:
         pygame.draw.rect(self.screen, constants.COLOR_BG, (panel_x, 0, panel_width, self.screen.get_height()))
         
         turn_text = self.large_font.render(f"{constants.PLAYER_NAMES[self.turn]}'s Turn", True, constants.COLOR_TEXT)
-        self.screen.blit(turn_text, (panel_x + 20, 20))
+        self.screen.blit(turn_text, (panel_x + 10, 20))
         
         red_captured = 12 - self.board.white_left
         white_captured = 12 - self.board.red_left
         
         red_text = self.font.render(f"Red Captured: {red_captured}", True, RED)
-        self.screen.blit(red_text, (panel_x + 20, 80))
+        self.screen.blit(red_text, (panel_x + 10, 80))
         
         white_text = self.font.render(f"White Captured: {white_captured}", True, WHITE)
-        self.screen.blit(white_text, (panel_x + 20, 120))
+        self.screen.blit(white_text, (panel_x + 10, 120))
         
         for button in self.buttons:
             button.draw(self.screen)
 
     def draw(self):
-        self.board.draw(self.screen)
+        self.board.draw(self.screen, self.show_board_numbers)
         self.draw_info_panel()
 
         if self.selected_piece:
@@ -193,7 +212,7 @@ class CheckersGame:
 
         if self.done:
             winner = RED if self.turn == WHITE else WHITE
-            end_text = self.large_font.render(f"{constants.PLAYER_NAMES[winner]} Wins!", True, (0, 255, 0))
+            end_text = self.large_font.render(f"{constants.PLAYER_NAMES[winner]} Wins!", True, (0, 255, 0), constants.COLOR_BG)
             text_rect = end_text.get_rect(center=(BOARD_SIZE / 2, self.screen.get_height() / 2))
             self.screen.blit(end_text, text_rect)
 
@@ -211,6 +230,6 @@ class CheckersGame:
                 for button in self.buttons:
                     if button.is_clicked(event.pos):
                         button.callback()
-                        break # Stop after one button click
-                else: # If no button was clicked
-                    self._handle_click(event.pos)
+                        break 
+                else: 
+                    self.current_state.handle_events(events)

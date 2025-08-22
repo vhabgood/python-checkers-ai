@@ -18,7 +18,8 @@ class Button:
         self.size = size
         self.callback = callback
         self.rect = pygame.Rect(pos, size)
-        self.font = pygame.font.SysFont('Arial', 24)
+        # Further shrink button font size to fit
+        self.font = pygame.font.SysFont(None, 18) 
         self.hovered = False
 
     def draw(self, screen):
@@ -69,7 +70,7 @@ class LoadingScreen(BaseState):
 
     def update(self):
         current_time = time.time()
-        if current_time - self.last_update_time > 0.5:  # Update status every 0.5 seconds
+        if current_time - self.last_update_time > 0.5:
             self.current_status_index += 1
             if self.current_status_index >= len(self.loading_status):
                 self.done = True
@@ -100,7 +101,6 @@ class PlayerSelectionScreen(BaseState):
                 mouse_pos = pygame.mouse.get_pos()
                 for button in self.buttons:
                     if button['rect'].collidepoint(mouse_pos):
-                        # Get the string name ('Red' or 'White') and convert to lowercase
                         player_color_name = PLAYER_NAMES.get(button['player'])
                         self.player_choice = player_color_name.lower()
                         self.done = True
