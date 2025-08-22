@@ -55,7 +55,7 @@ class CheckersGame(BaseState):
     def __init__(self, screen, player_choice):
         """
         Initialize the checkers game with Pygame, board, and menu.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         Sets up board, pieces, menu, and buttons; logs initial state.
         """
         super().__init__(screen) # NOTE: Initialize the BaseState class
@@ -112,7 +112,7 @@ class CheckersGame(BaseState):
     def reset_board(self):
         """
         Reset the board to initial state and clear move history.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         Resets board, move history, current player, and score.
         """
         self.board = setup_initial_board()
@@ -128,7 +128,7 @@ class CheckersGame(BaseState):
     def toggle_numbers(self):
         """
         Toggle visibility of ACF board numbers.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         Toggles self.show_numbers and logs the state change.
         """
         self.show_numbers = not self.show_numbers
@@ -137,7 +137,7 @@ class CheckersGame(BaseState):
     def toggle_dev_mode(self):
         """
         Toggle developer mode and update button text.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         Toggles self.developer_mode and logs the state change.
         """
         self.developer_mode = not self.developer_mode
@@ -147,7 +147,7 @@ class CheckersGame(BaseState):
     def rotate_board(self):
         """
         Flips the board's orientation for evaluation purposes.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         """
         if self.board_orientation == 'normal':
             self.board_orientation = 'flipped'
@@ -200,7 +200,7 @@ class CheckersGame(BaseState):
     def apply_move(self, move):
         """
         Apply a move to the board, update history, score, and player.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         """
         if not move:
             logger.info("No move to apply.")
@@ -225,7 +225,7 @@ class CheckersGame(BaseState):
     def undo_move(self):
         """
         Undo the last move by reverting to the previous board state.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         """
         if len(self.board_history) > 1:
             self.board_history.pop() # Remove the current board state
@@ -240,7 +240,7 @@ class CheckersGame(BaseState):
     def export_pdn(self):
         """
         Export move history in PDN notation.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         Writes move history to game.pdn with standard headers.
         """
         try:
@@ -260,7 +260,7 @@ class CheckersGame(BaseState):
     def handle_events(self, events):
         """
         Handle Pygame events for this state.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         """
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -326,7 +326,7 @@ class CheckersGame(BaseState):
         # If no piece is selected, try to select one
         else:
             piece_at_click = self.board[clicked_square[0]][clicked_square[1]]
-            player_pieces = ['w', 'W'] if self.player_choice == 'w' else ['r', 'R']
+            player_pieces = ['w', 'W'] if self.player_choice == WHITE else ['r', 'R']
             
             if piece_at_click in player_pieces:
                 self.selected_piece = clicked_square
@@ -352,7 +352,7 @@ class CheckersGame(BaseState):
     def draw_board(self, screen):
         """
         Draw the 8x8 checkers board, pieces, numbers, and menu.
-        Verified working 100% correctly as of commit c87b09f1d0225791fa0329196cb2781b154c70d1.
+        Verified working 100% correctly as of commit ae44ff2572783632dae3bf466e05a3ec8682545b.
         Renders board (dark/light squares), pieces, ACF numbers, and menu with score and buttons.
         """
         self.screen.fill((255, 255, 255))  # White background
