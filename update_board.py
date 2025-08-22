@@ -1,3 +1,7 @@
+import os
+
+# This multi-line string contains the entire, correct content for board.py
+board_py_content = """
 # engine/board.py
 import pygame
 import logging
@@ -8,15 +12,19 @@ logger = logging.getLogger('board')
 
 class Board:
     def __init__(self):
+        # THIS IS A TEST TO PROVE THE FILE HAS BEEN UPDATED
+        raise SystemExit("THE NEW BOARD.PY FILE IS RUNNING!")
+
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
         self.create_board()
         logger.debug("Board initialized.")
+        self.print_board_state()
 
     def print_board_state(self):
-        """Prints the board state to the debug log."""
-        board_str = "\n"
+        \"\"\"Prints the board state to the debug log.\"\"\"
+        board_str = "\\n"
         for row_idx, row in enumerate(self.board):
             row_str = f"Row {row_idx}: "
             for piece in row:
@@ -28,10 +36,10 @@ class Board:
                         color_char = 'R'
                     elif piece.color == WHITE:
                         color_char = 'W'
-                    
+
                     king_char = 'K' if piece.king else 'M'
                     row_str += f" {color_char}{king_char} "
-            board_str += row_str + "\n"
+            board_str += row_str + "\\n"
         logger.debug(board_str)
 
     def create_board(self):
@@ -52,7 +60,6 @@ class Board:
         screen.fill(BLACK)
         for row in range(ROWS):
             for col in range(COLS):
-                # Corrected drawing to use (col, row) for (x, y)
                 if (row + col) % 2 == 1:
                     pygame.draw.rect(screen, (181, 136, 99), (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
                 else:
@@ -61,7 +68,7 @@ class Board:
 
     def get_piece(self, row, col):
         return self.board[row][col]
-    
+
     def get_all_pieces(self, color):
         pieces = []
         for row in self.board:
@@ -72,8 +79,7 @@ class Board:
 
     def move(self, piece, row, col):
         self.board[piece.row][piece.col], self.board[row][col] = self.board[row][col], self.board[piece.row][piece.col]
-        
-        # Check for jumps to remove the captured piece
+
         captured_piece = None
         if abs(piece.row - row) == 2:
             middle_row = (piece.row + row) // 2
@@ -88,7 +94,7 @@ class Board:
                     self.white_left -= 1
 
         piece.move(row, col)
-        
+
         if row == 0 or row == ROWS - 1:
             if not piece.king:
                 piece.make_king()
@@ -96,7 +102,7 @@ class Board:
                     self.white_kings += 1
                 else:
                     self.red_kings += 1
-        
+
         return captured_piece
 
     def draw(self, screen):
@@ -108,20 +114,17 @@ class Board:
                     piece.draw(screen)
 
     def get_all_valid_moves_for_color(self, color):
-        """Gets all valid moves for a given color, respecting the forced jump rule."""
+        \"\"\"Gets all valid moves for a given color, respecting the forced jump rule.\"\"\"
         moves = {}
-        # First, find all possible jumps
         for piece in self.get_all_pieces(color):
             jumps = self._get_jumps_for_piece(piece.row, piece.col)
             if jumps:
                 moves[(piece.row, piece.col)] = list(jumps.keys())
-        
-        # If jumps were found, they are the only valid moves
+
         if moves:
             logger.debug(f"Found jumps for {color}: {moves}")
             return moves
 
-        # If no jumps were found, find all possible slides
         for piece in self.get_all_pieces(color):
             slides = self._get_slides_for_piece(piece.row, piece.col)
             if slides:
@@ -129,19 +132,17 @@ class Board:
 
         logger.debug(f"Found slides for {color}: {moves}")
         return moves
-        
+
     def _get_slides_for_piece(self, row, col):
-        """Calculates all valid slide moves for a single piece."""
+        \"\"\"Calculates all valid slide moves for a single piece.\"\"\"
         moves = {}
         piece = self.get_piece(row, col)
 
-        # Check moves towards top of board (for White men and all Kings)
         if piece.color == WHITE or piece.king:
             for r, c in [(row - 1, col - 1), (row - 1, col + 1)]:
                 if 0 <= r < ROWS and 0 <= c < COLS and self.board[r][c] == 0:
                     moves[(r, c)] = []
 
-        # Check moves towards bottom of board (for Red men and all Kings)
         if piece.color == RED or piece.king:
             for r, c in [(row + 1, col - 1), (row + 1, col + 1)]:
                 if 0 <= r < ROWS and 0 <= c < COLS and self.board[r][c] == 0:
@@ -149,11 +150,10 @@ class Board:
         return moves
 
     def _get_jumps_for_piece(self, row, col):
-        """Calculates all valid jump moves for a single piece."""
+        \"\"\"Calculates all valid jump moves for a single piece.\"\"\"
         moves = {}
         piece = self.get_piece(row, col)
 
-        # Check jumps towards top of board (for White men and all Kings)
         if piece.color == WHITE or piece.king:
             for (r_mid, c_mid), (r_end, c_end) in [((row - 1, col - 1), (row - 2, col - 2)), ((row - 1, col + 1), (row - 2, col + 2))]:
                 if 0 <= r_end < ROWS and 0 <= c_end < COLS:
@@ -161,8 +161,7 @@ class Board:
                     end_piece = self.board[r_end][c_end]
                     if end_piece == 0 and mid_piece != 0 and mid_piece.color != piece.color:
                         moves[(r_end, c_end)] = [mid_piece]
-        
-        # Check jumps towards bottom of board (for Red men and all Kings)
+
         if piece.color == RED or piece.king:
             for (r_mid, c_mid), (r_end, c_end) in [((row + 1, col - 1), (row + 2, col - 2)), ((row + 1, col + 1), (row + 2, col + 2))]:
                 if 0 <= r_end < ROWS and 0 <= c_end < COLS:
@@ -171,3 +170,20 @@ class Board:
                     if end_piece == 0 and mid_piece != 0 and mid_piece.color != piece.color:
                         moves[(r_end, c_end)] = [mid_piece]
         return moves
+"""
+
+# Path to your board.py file
+file_path = os.path.join('engine', 'board.py')
+
+try:
+    print(f"Attempting to overwrite '{file_path}' with the correct version...")
+    # Write the content to the local file
+    with open(file_path, 'w') as f:
+        f.write(board_py_content.strip())
+
+    print(f"'{file_path}' has been updated successfully.")
+    print("Please run 'python3 -m main' again.")
+
+except Exception as e:
+    print(f"An error occurred: {e}")
+    print("Please check your file permissions.")
