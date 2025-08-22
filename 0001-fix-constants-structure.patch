@@ -1,0 +1,10 @@
+--- a/engine/constants.py
++++ b/engine/constants.py
+@@ -13,4 +13,5 @@
+ BLUE = (0, 0, 255)
+ 
+ # --- Game Pieces ---
+-CROWN = pygame.transform.scale(pygame.image.load('resources/crown.png'), (44, 25))
++# The CROWN image will be loaded in the main game class, not here.
++CROWN_PATH = 'resources/crown.png'
++CROWN = None

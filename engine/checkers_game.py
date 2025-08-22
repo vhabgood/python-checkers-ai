@@ -5,6 +5,7 @@ import threading
 import queue
 from .board import Board
 from .constants import SQUARE_SIZE
+import engine.constants as constants
 from gui.button import Button
 from engine.search import minimax_alpha_beta_search
 
@@ -21,6 +22,10 @@ class CheckersGame:
         self.selected_piece = None
         self.valid_moves = {}
         self.game_over = False
+
+        # Correctly load assets after pygame has been initialized
+        constants.CROWN = pygame.transform.scale(pygame.image.load(constants.CROWN_PATH), (44, 25))
+
         self._update_valid_moves() # Calculate initial valid moves for white
         self.font = pygame.font.SysFont(None, 36)
 
