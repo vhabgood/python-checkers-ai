@@ -10,6 +10,33 @@ from engine.constants import (
 
 logger = logging.getLogger('gui')
 
+class Button:
+    """A simple clickable button class."""
+    def __init__(self, text, pos, size, callback):
+        self.text = text
+        self.pos = pos
+        self.size = size
+        self.callback = callback
+        self.rect = pygame.Rect(pos, size)
+        self.font = pygame.font.SysFont('Arial', 24)
+        self.hovered = False
+
+    def draw(self, screen):
+        """Draws the button on the screen."""
+        mouse_pos = pygame.mouse.get_pos()
+        self.hovered = self.rect.collidepoint(mouse_pos)
+        
+        button_color = COLOR_BUTTON_HOVER if self.hovered else COLOR_BUTTON
+        pygame.draw.rect(screen, button_color, self.rect)
+        
+        text_surf = self.font.render(self.text, True, COLOR_TEXT)
+        text_rect = text_surf.get_rect(center=self.rect.center)
+        screen.blit(text_surf, text_rect)
+
+    def is_clicked(self, pos):
+        """Returns True if the given position is over the button."""
+        return self.rect.collidepoint(pos)
+
 class BaseState:
     """Base class for all game states."""
     def __init__(self, screen):
@@ -91,4 +118,3 @@ class PlayerSelectionScreen(BaseState):
             text_surf = self.font.render(button['text'], True, COLOR_TEXT)
             text_rect = text_surf.get_rect(center=button['rect'].center)
             self.screen.blit(text_surf, text_rect)
-

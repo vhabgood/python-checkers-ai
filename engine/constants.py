@@ -1,15 +1,49 @@
-victor@VicNRylee:~/Desktop/checkers/Programs/checkers_project$ python3 -m main 
-<frozen importlib._bootstrap>:488: RuntimeWarning: Your system is avx2 capable but pygame was not built with support for it. The performance of some of your blits could be adversely affected. Consider enabling compile time detection with environment variables like PYGAME_DETECT_AVX2=1 if you are compiling without cross compilation.
-pygame 2.5.2 (SDL 2.30.0, Python 3.12.3)
-Hello from the pygame community. https://www.pygame.org/contribute.html
-Traceback (most recent call last):
-  File "<frozen runpy>", line 198, in _run_module_as_main
-  File "<frozen runpy>", line 88, in _run_code
-  File "/home/victor/Desktop/checkers/Programs/checkers_project/main.py", line 10, in <module>
-    from engine.checkers_game import CheckersGame, FPS
-  File "/home/victor/Desktop/checkers/Programs/checkers_project/engine/checkers_game.py", line 6, in <module>
-    from .board import Board
-  File "/home/victor/Desktop/checkers/Programs/checkers_project/engine/board.py", line 4, in <module>
-    from .piece import Piece
-ModuleNotFoundError: No module named 'engine.piece'
+# engine/constants.py
+import pygame
 
+# --- Game Settings ---
+FPS = 60
+
+# --- Dimensions ---
+BOARD_SIZE = 480
+INFO_WIDTH = 120
+WIDTH, HEIGHT = BOARD_SIZE + INFO_WIDTH, BOARD_SIZE
+ROWS, COLS = 8, 8
+SQUARE_SIZE = BOARD_SIZE // COLS
+PIECE_RADIUS = SQUARE_SIZE // 2 - 6
+
+# --- Player and Piece Identifiers ---
+RED = (255, 0, 0)
+WHITE = (255, 255, 255)
+PLAYER_NAMES = {RED: 'Red', WHITE: 'White'}
+
+# --- Colors ---
+COLOR_RED_P = (210, 0, 0)
+COLOR_WHITE_P = (245, 245, 245)
+COLOR_LIGHT_SQUARE = (227, 206, 187)
+COLOR_DARK_SQUARE = (181, 136, 99)
+COLOR_HIGHLIGHT = (255, 255, 0)
+COLOR_SELECTED = (0, 200, 0)
+COLOR_CROWN = (255, 215, 0)
+COLOR_TEXT = (255, 255, 255)
+COLOR_BG = (20, 20, 20)
+COLOR_BUTTON = (100, 100, 100)
+COLOR_BUTTON_HOVER = (150, 150, 150)
+BLACK = (0, 0, 0) # General purpose color
+BLUE = (0, 0, 255)  # General purpose color
+GREY = (128, 128, 128) # General purpose color
+
+# --- Game Asset Paths ---
+CROWN_PATH = 'resources/crown.png'
+CROWN = None
+
+# --- AI and Game Logic Constants ---
+FUTILITY_MARGIN = 300 # Margin for futility pruning in AI
+EMPTY = 0
+RED_KING = 3
+WHITE_KING = -3
+
+# --- Board Coordinate Mappings ---
+# These are likely placeholders and may need adjustment based on your board's specific notation
+COORD_TO_ACF = {}
+ACF_TO_COORD = {}

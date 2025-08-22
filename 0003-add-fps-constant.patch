@@ -1,0 +1,12 @@
+--- a/engine/constants.py
++++ b/engine/constants.py
+@@ -1,5 +1,8 @@
+ # engine/constants.py
+ import pygame
+ 
++# --- Game Settings ---
++FPS = 60
++
+ # --- Dimensions ---
+ WIDTH, HEIGHT = 800, 800
+ ROWS, COLS = 8, 8

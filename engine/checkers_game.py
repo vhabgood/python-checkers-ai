@@ -6,8 +6,8 @@ import queue
 from .board import Board
 from .constants import SQUARE_SIZE
 import engine.constants as constants
-from gui.button import Button
-from engine.search import minimax_alpha_beta_search
+from game_states import Button
+# from engine.search import minimax_alpha_beta_search # TODO: Uncomment when AI is implemented
 
 # Set up logging
 logger = logging.getLogger('gui')

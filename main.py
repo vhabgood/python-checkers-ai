@@ -7,9 +7,10 @@ import sys
 import os
 
 # NOTE: The corrected imports for your project structure.
-from engine.checkers_game import CheckersGame, FPS
+from engine.checkers_game import CheckersGame
 from game_states import LoadingScreen, PlayerSelectionScreen
 from engine.constants import (
+    FPS,
     BOARD_SIZE,
     INFO_WIDTH,
     SQUARE_SIZE,
@@ -141,5 +142,3 @@ if __name__ == "__main__":
     
     game_manager = StateManager(screen)
     game_manager.run()
-
-
