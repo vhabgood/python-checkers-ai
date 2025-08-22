@@ -4,48 +4,85 @@ import logging
 import threading
 import queue
 from .board import Board
-from .constants import SQUARE_SIZE
+from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE
 import engine.constants as constants
 from game_states import Button
-# from engine.search import minimax_alpha_beta_search # TODO: Uncomment when AI is implemented
 
 # Set up logging
 logger = logging.getLogger('gui')
 
 class CheckersGame:
-    def __init__(self, screen, player_color):
+    def __init__(self, screen, player_color_str):
         self.screen = screen
         self.board = Board()
-        self.player_color = player_color.lower()
-        self.ai_color = 'red' if self.player_color == 'white' else 'white'
-        self.turn = 'white'  # White always starts
+        
+        self.player_color = WHITE if player_color_str == 'white' else RED
+        self.ai_color = RED if self.player_color == WHITE else WHITE
+        
+        self.turn = WHITE
         self.selected_piece = None
         self.valid_moves = {}
         
-        # State machine attributes
         self.done = False
         self.next_state = None
         
-        self._update_valid_moves() # Calculate initial valid moves for white
-        self.font = pygame.font.SysFont(None, 36)
+        self.font = pygame.font.SysFont(None, 24)
+        self.large_font = pygame.font.SysFont(None, 36)
+        
+        self._create_buttons()
+        self._update_valid_moves()
 
         # AI threading
         self.ai_move_queue = queue.Queue()
         self.ai_thread = None
 
-        # Button
-        self.force_ai_move_button = Button(
-            "Force AI Move",
-            (self.screen.get_width() - 220, self.screen.get_height() - 60),
-            (200, 40),
-            self.force_ai_move
-        )
+    def _create_buttons(self):
+        """Creates all the UI buttons for the side panel."""
+        self.buttons = []
+        panel_x = BOARD_SIZE + 20
+        
+        # Define button properties (text, callback, y_pos)
+        button_defs = [
+            ("Reset Board", self.reset_game, 200),
+            ("Undo Move", self.undo_move, 250),
+            ("Flip Board", self.flip_board, 300),
+            ("Force AI Move", self.force_ai_move, self.screen.get_height() - 60)
+            # Placeholders for toggle buttons
+            # ("Dev Mode: OFF", self.toggle_dev_mode, 350),
+            # ("Board nums: OFF", self.toggle_board_nums, 400),
+        ]
+        
+        for text, callback, y_pos in button_defs:
+            button = Button(
+                text,
+                (panel_x, y_pos),
+                (self.screen.get_width() - BOARD_SIZE - 40, 40), # Button width
+                callback
+            )
+            self.buttons.append(button)
 
+    # --- Button Callback Methods ---
+    def reset_game(self):
+        logger.info("Reset Game button clicked.")
+        self.board.create_board()
+        self.turn = WHITE
+        self.done = False
+        self._update_valid_moves()
+
+    def undo_move(self):
+        # Placeholder for undo functionality
+        logger.info("Undo Move button clicked (not implemented).")
+
+    def flip_board(self):
+        # Placeholder for flip board functionality
+        logger.info("Flip Board button clicked (not implemented).")
+        
     def force_ai_move(self):
         logger.info("Force AI Move button clicked")
         if self.turn == self.ai_color:
             self.start_ai_turn()
 
+    # --- AI Methods ---
     def start_ai_turn(self):
         logger.info("Starting AI turn.")
         if self.ai_thread is None or not self.ai_thread.is_alive():
@@ -55,95 +92,97 @@ class CheckersGame:
 
     def run_ai_calculation(self):
         try:
-            # Simple AI for now: just get the first valid move
-            # In the future, this will call the minimax search
             if self.valid_moves:
                 all_moves = list(self.valid_moves.items())
                 start_pos, end_positions = all_moves[0]
                 end_pos = end_positions[0]
-                move = (start_pos, end_pos) # Example: ((2, 1), (3, 0))
+                move = (start_pos, end_pos)
                 self.ai_move_queue.put(move)
             else:
-                self.ai_move_queue.put(None) # No moves available
+                self.ai_move_queue.put(None)
         except Exception as e:
             logger.error(f"AI calculation failed: {e}")
             self.ai_move_queue.put(None)
         finally:
             logger.info("AI calculation completed.")
 
+    # --- Core Game Logic Methods ---
     def _update_valid_moves(self):
-        """
-        Calculates all valid moves for the current player at the start of the turn
-        and stores them in self.valid_moves.
-        """
         self.valid_moves = self.board.get_all_valid_moves_for_color(self.turn)
-        logger.debug(f"Valid moves for {self.turn}: {self.valid_moves}")
         if not self.valid_moves:
-            self.done = True # Set the done flag when game is over
-            winner = 'red' if self.turn == 'white' else 'white'
-            logger.info(f"Game over! {winner.capitalize()} wins.")
+            self.done = True
+            winner = RED if self.turn == WHITE else WHITE
+            logger.info(f"Game over! {constants.PLAYER_NAMES[winner]} wins.")
 
     def _change_turn(self):
         self.selected_piece = None
-        self.turn = 'red' if self.turn == 'white' else 'white'
-        logger.info(f"Turn changed to {self.turn}")
-        self._update_valid_moves() # Recalculate moves for the new player
+        self.turn = RED if self.turn == WHITE else WHITE
+        logger.info(f"Turn changed to {constants.PLAYER_NAMES[self.turn]}")
+        self._update_valid_moves()
 
     def _select(self, row, col):
-        """
-        Handles selecting a piece or a destination square.
-        """
-        # If a piece is already selected, check if the new click is a valid destination
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
-            # The destination must be in the list of valid moves for the selected piece
             if start_pos in self.valid_moves and (row, col) in self.valid_moves[start_pos]:
                 self._apply_move(start_pos, (row, col))
                 return
-            # Otherwise, deselect
             else:
                 self.selected_piece = None
-                self.selected_piece_valid_moves = []
-
-        # If no piece is selected, check if this click selects a piece with valid moves
+        
         if (row, col) in self.valid_moves:
-            piece = self.board.get_piece(row, col)
-            self.selected_piece = piece
-            self.selected_piece_valid_moves = self.valid_moves[(row, col)]
-            logger.info(f"Piece selected at {(row, col)}. Found {len(self.selected_piece_valid_moves)} valid moves.")
+            self.selected_piece = self.board.get_piece(row, col)
+            logger.info(f"Piece selected at {(row, col)}. Found {len(self.valid_moves[(row, col)])} valid moves.")
         else:
             self.selected_piece = None
-            self.selected_piece_valid_moves = []
-
 
     def _apply_move(self, start_pos, end_pos):
         piece = self.board.get_piece(start_pos[0], start_pos[1])
         captured_piece = self.board.move(piece, end_pos[0], end_pos[1])
 
-        # Check for multi-jumps
         if captured_piece:
-            # After a jump, check if the same piece can make another jump
             jumps = self.board._get_jumps_for_piece(end_pos[0], end_pos[1])
             if jumps:
-                # Force another jump: update selected piece and valid moves for this piece only
                 self.selected_piece = self.board.get_piece(end_pos[0], end_pos[1])
                 self.valid_moves = {(end_pos[0], end_pos[1]): list(jumps.keys())}
                 logger.info(f"Multi-jump available for piece at {end_pos}")
-                return # Do not change turn yet
+                return
 
-        # If it's not a multi-jump, change the turn
         self._change_turn()
 
+    # --- Event and Drawing Methods ---
     def _handle_click(self, pos):
-        if self.turn == self.player_color and not self.done:
+        if self.turn != self.player_color or self.done:
+            return
+            
+        if pos[0] < BOARD_SIZE:
             row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
             self._select(row, col)
 
-    def draw(self):
-        self.screen.fill((20, 20, 20))  # Dark background
-        self.board.draw(self.screen)
+    def draw_info_panel(self):
+        panel_x = BOARD_SIZE
+        panel_width = self.screen.get_width() - BOARD_SIZE
+        
+        pygame.draw.rect(self.screen, constants.COLOR_BG, (panel_x, 0, panel_width, self.screen.get_height()))
+        
+        turn_text = self.large_font.render(f"{constants.PLAYER_NAMES[self.turn]}'s Turn", True, constants.COLOR_TEXT)
+        self.screen.blit(turn_text, (panel_x + 20, 20))
+        
+        red_captured = 12 - self.board.white_left
+        white_captured = 12 - self.board.red_left
+        
+        red_text = self.font.render(f"Red Captured: {red_captured}", True, RED)
+        self.screen.blit(red_text, (panel_x + 20, 80))
+        
+        white_text = self.font.render(f"White Captured: {white_captured}", True, WHITE)
+        self.screen.blit(white_text, (panel_x + 20, 120))
+        
+        for button in self.buttons:
+            button.draw(self.screen)
 
-        # Highlight valid moves for the selected piece
+    def draw(self):
+        self.board.draw(self.screen)
+        self.draw_info_panel()
+
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
             if start_pos in self.valid_moves:
@@ -152,33 +191,26 @@ class CheckersGame:
                     pygame.draw.circle(self.screen, (0, 255, 0),
                                        (col * SQUARE_SIZE + SQUARE_SIZE // 2, row * SQUARE_SIZE + SQUARE_SIZE // 2), 15)
 
-        self.force_ai_move_button.draw(self.screen)
-
-        # Display turn indicator
-        turn_text = self.font.render(f"{self.turn.capitalize()}'s Turn", True, (255, 255, 255))
-        self.screen.blit(turn_text, (10, 10))
-        
         if self.done:
-            winner = 'red' if self.turn == 'white' else 'white'
-            end_text = self.font.render(f"{winner.capitalize()} Wins!", True, (0, 255, 0))
-            text_rect = end_text.get_rect(center=(self.screen.get_width()/2, self.screen.get_height()/2))
+            winner = RED if self.turn == WHITE else WHITE
+            end_text = self.large_font.render(f"{constants.PLAYER_NAMES[winner]} Wins!", True, (0, 255, 0))
+            text_rect = end_text.get_rect(center=(BOARD_SIZE / 2, self.screen.get_height() / 2))
             self.screen.blit(end_text, text_rect)
 
-
     def update(self):
-        # Check for AI move from the queue
         try:
             start_pos, end_pos = self.ai_move_queue.get_nowait()
             if start_pos and end_pos:
-                logger.info(f"Applying AI move from {start_pos} to {end_pos}")
                 self._apply_move(start_pos, end_pos)
         except queue.Empty:
-            pass # No AI move yet
+            pass
 
     def handle_events(self, events):
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if self.force_ai_move_button.is_clicked(event.pos):
-                    self.force_ai_move_button.callback()
-                else:
+                for button in self.buttons:
+                    if button.is_clicked(event.pos):
+                        button.callback()
+                        break # Stop after one button click
+                else: # If no button was clicked
                     self._handle_click(event.pos)
