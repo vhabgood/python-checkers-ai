@@ -29,6 +29,11 @@ INFO_WIDTH = 192
 SQUARE_SIZE = 72
 PIECE_RADIUS = 31
 
+# --- RGB Colors ---
+RED = (255, 0, 0)
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+BLUE = (0, 0, 255)
 # Player names
 PLAYER_NAMES = {RED: "Red", WHITE: "White"}
 
