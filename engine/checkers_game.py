@@ -1,8 +1,4 @@
 # engine/checkers_game.py
-"""
-Defines the main CheckersGame class, which manages the game state, player
-input, AI interaction, and drawing. This is the central hub of the gameplay.
-"""
 import pygame
 import logging
 import threading
@@ -12,6 +8,8 @@ from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS
 import engine.constants as constants
 from game_states import Button
+from engine.search import minimax
+from engine.evaluation import evaluate_board
 
 logger = logging.getLogger('gui')
 
@@ -24,37 +22,33 @@ class CheckersGame:
         self.screen = screen
         self.board = Board()
         
-        # Convert incoming color string (e.g., 'white') to the color tuple identifier
         self.player_color = WHITE if player_color_str == 'white' else RED
         self.ai_color = RED if self.player_color == WHITE else WHITE
         
-        self.turn = RED # Red always starts
+        self.turn = RED
         self.selected_piece = None
         self.valid_moves = {}
         
-        # State machine attributes used by the main StateManager
         self.done = False
         self.next_state = None
         
-        # --- Visual and Gameplay Toggles ---
         self.show_board_numbers = False
         self.dev_mode = False
         self.board_flipped = False
         
-        # Move history for the undo feature
         self.history = []
         
-        # --- Fonts ---
         self.large_font = pygame.font.SysFont(None, 22) 
         self.font = pygame.font.SysFont(None, 24)
         self.number_font = pygame.font.SysFont(None, 18)
         
-        self._create_buttons()
-        self._update_valid_moves()
-
-        # AI threading components
+        # --- AI-related attributes ---
         self.ai_move_queue = queue.Queue()
         self.ai_thread = None
+        self.positional_score = 0.0 # To display in the side panel
+        
+        self._create_buttons()
+        self._update_valid_moves()
 
     def _create_buttons(self):
         """Creates all the UI buttons for the side panel."""
@@ -82,7 +76,6 @@ class CheckersGame:
             )
             self.buttons.append(button)
         
-        # Store references to buttons whose text needs to be updated
         self.board_nums_button = self.buttons[3]
         self.dev_mode_button = self.buttons[4]
 
@@ -91,7 +84,7 @@ class CheckersGame:
         """Resets the game to its initial state."""
         logger.info("Reset Game button clicked.")
         self.board.create_board()
-        self.turn = RED # Red always starts
+        self.turn = RED
         self.done = False
         self.history = []
         self._update_valid_moves()
@@ -104,7 +97,7 @@ class CheckersGame:
         
         logger.info("Undo Move button clicked: Reverting to previous state.")
         self.board = self.history.pop()
-        self.turn = RED if self.turn == WHITE else WHITE # Revert the turn
+        self.turn = RED if self.turn == WHITE else WHITE
         self._update_valid_moves()
 
     def flip_board(self):
@@ -144,27 +137,29 @@ class CheckersGame:
             self.ai_thread.start()
 
     def run_ai_calculation(self):
-        """The AI's thinking process (currently a placeholder)."""
+        """The AI's thinking process, now using the minimax algorithm."""
         try:
-            if self.valid_moves:
-                all_moves = list(self.valid_moves.items())
-                start_pos, end_positions = all_moves[0]
-                end_pos = end_positions[0]
-                move = (start_pos, end_pos)
-                self.ai_move_queue.put(move)
-            else:
-                self.ai_move_queue.put(None)
+            is_maximizing = True if self.ai_color == WHITE else False
+            
+            # --- THIS IS THE NEW AI LOGIC ---
+            # Call the minimax function to find the best move.
+            # Depth 3 is a good starting point for reasonable speed.
+            score, new_board = minimax(self.board, 3, float('-inf'), float('inf'), is_maximizing, evaluate_board)
+            self.positional_score = score
+            
+            # Put the resulting board state in the queue to be applied by the main thread.
+            self.ai_move_queue.put(new_board)
+            
         except Exception as e:
             logger.error(f"AI calculation failed: {e}")
             self.ai_move_queue.put(None)
         finally:
-            logger.info("AI calculation completed.")
+            logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
 
     # --- Core Game Logic Methods ---
     def _update_valid_moves(self):
         """Recalculates all valid moves for the current player."""
         self.valid_moves = self.board.get_all_valid_moves_for_color(self.turn)
-        # If no valid moves are found, the game is over.
         if not self.valid_moves:
             self.done = True
             winner = RED if self.turn == WHITE else WHITE
@@ -179,38 +174,40 @@ class CheckersGame:
 
     def _select(self, row, col):
         """Handles a click on a board square to select or move a piece."""
-        # If a piece is already selected, check if this click is a valid destination.
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
             if start_pos in self.valid_moves and (row, col) in self.valid_moves[start_pos]:
                 self._apply_move(start_pos, (row, col))
                 return
             else:
-                self.selected_piece = None # Deselect if the click is not a valid move
+                self.selected_piece = None
         
-        # If no piece is selected, check if this click is on a piece with valid moves.
         if (row, col) in self.valid_moves:
             self.selected_piece = self.board.get_piece(row, col)
             logger.info(f"Piece selected at {(row, col)}. Found {len(self.valid_moves[(row, col)])} valid moves.")
         else:
             self.selected_piece = None
 
+    def _apply_move_from_board(self, new_board):
+        """Updates the current board state from a new board state (used by AI)."""
+        self.history.append(self.board) # Save old board to history
+        self.board = new_board
+        self._change_turn()
+
     def _apply_move(self, start_pos, end_pos):
         """Applies a move to the board and saves the previous state."""
-        # Save the current state to history before making the move for the undo feature.
         self.history.append(copy.deepcopy(self.board))
         
         piece = self.board.get_piece(start_pos[0], start_pos[1])
         captured_piece = self.board.move(piece, end_pos[0], end_pos[1])
 
-        # If a jump was made, check if another jump is possible (multi-jump).
         if captured_piece:
             jumps = self.board._get_jumps_for_piece(end_pos[0], end_pos[1])
             if jumps:
                 self.selected_piece = self.board.get_piece(end_pos[0], end_pos[1])
                 self.valid_moves = {(end_pos[0], end_pos[1]): list(jumps.keys())}
                 logger.info(f"Multi-jump available for piece at {end_pos}")
-                return # Do not change the turn yet.
+                return
 
         self._change_turn()
 
@@ -218,12 +215,11 @@ class CheckersGame:
     def _handle_click(self, pos):
         """Handles a mouse click event from the user."""
         if self.turn != self.player_color or self.done:
-            return # Ignore clicks if it's not the player's turn or game is over
+            return
             
         if pos[0] < BOARD_SIZE:
             row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
             
-            # Remap coordinates if the board is visually flipped
             if self.board_flipped:
                 row, col = ROWS - 1 - row, COLS - 1 - col
                 
@@ -248,7 +244,7 @@ class CheckersGame:
         white_text = self.font.render(f"White: {white_men}+{self.board.white_kings}", True, WHITE)
         self.screen.blit(white_text, (panel_x + 10, 90))
         
-        score_text = self.font.render("Positional Score:", True, constants.COLOR_TEXT)
+        score_text = self.font.render(f"Positional Score: {self.positional_score:.2f}", True, constants.COLOR_TEXT)
         self.screen.blit(score_text, (panel_x + 10, 120))
         
         for button in self.buttons:
@@ -259,7 +255,6 @@ class CheckersGame:
         self.board.draw(self.screen, self.number_font, self.show_board_numbers, self.board_flipped)
         self.draw_info_panel()
 
-        # Highlight the valid destination squares for a selected piece.
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
             if start_pos in self.valid_moves:
@@ -271,7 +266,6 @@ class CheckersGame:
                     pygame.draw.circle(self.screen, (0, 255, 0),
                                        (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2), 15)
 
-        # Display the "Game Over" message.
         if self.done:
             winner = RED if self.turn == WHITE else WHITE
             end_text = self.large_font.render(f"{constants.PLAYER_NAMES[winner]} Wins!", True, (0, 255, 0), constants.COLOR_BG)
@@ -281,20 +275,20 @@ class CheckersGame:
     def update(self):
         """Updates the game state, primarily checking for AI moves from the queue."""
         try:
-            start_pos, end_pos = self.ai_move_queue.get_nowait()
-            if start_pos and end_pos:
-                self._apply_move(start_pos, end_pos)
+            # The AI now returns the entire new board state
+            new_board = self.ai_move_queue.get_nowait()
+            if new_board:
+                self._apply_move_from_board(new_board)
         except queue.Empty:
-            pass # No AI move ready
+            pass
 
     def handle_events(self, events):
         """Handles all user input events."""
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
-                # Check for button clicks first
                 for button in self.buttons:
                     if button.is_clicked(event.pos):
                         button.callback()
-                        break # Stop after one button click is processed
-                else: # This 'else' belongs to the for-loop, runs if no 'break'
+                        break 
+                else: 
                     self._handle_click(event.pos)

@@ -1,56 +1,67 @@
-import threading
-import time
+# engine/search.py
+"""
+Contains the AI's search algorithm (minimax with alpha-beta pruning).
+"""
+from .constants import RED, WHITE
+import copy
 
-# --- This file would likely contain your primary AI classes and functions.
-# --- The CheckersAI class is modified here to be interruptible.
-
-class CheckersAI:
+def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    A class to handle AI move calculation, designed to be run in a thread.
-    The search function is now aware of an interrupt flag.
+    Minimax algorithm with alpha-beta pruning to find the best move.
+
+    Args:
+        board (Board): The current board state.
+        depth (int): The maximum depth to search.
+        alpha (float): The best value for the maximizer found so far.
+        beta (float): The best value for the minimizer found so far.
+        maximizing_player (bool): True if the current player is the maximizer (White).
+        evaluate_func (function): The function to score a board state.
+
+    Returns:
+        tuple: A tuple containing the best score and the best move (Board object).
     """
-    def __init__(self, game_state):
-        self.game_state = game_state
-        # This is a thread-safe flag that can be set to stop the search.
-        self.interrupt_flag = threading.Event()
-        self.best_move_found = None
-        
-    def find_best_move(self, depth_limit=10):
-        """
-        The main AI search function (e.g., Minimax/Alpha-Beta).
-        It is designed to be interruptible.
-        """
-        # --- The following are additions for the interruptible feature ---
-        self.interrupt_flag.clear()  # Reset the flag for a new search
-        self.best_move_found = None
-        # --- End of additions ---
-        
-        # This is a simplified search loop. In your actual code,
-        # you would need to add a check for self.interrupt_flag.is_set()
-        # at the start of your recursive function (e.g., at the top of minimax()).
-        for current_depth in range(1, depth_limit + 1):
-            # --- This is the key check for the interrupt feature ---
-            if self.interrupt_flag.is_set():
-                print(f"AI search interrupted at depth {current_depth-1}.")
-                # Return the best move found *so far*.
-                return self.best_move_found
-            # --- End of key check ---
-            
-            print(f"AI is calculating at depth {current_depth}...")
-            # Simulate heavy computation. Replace this with your actual
-            # search logic.
-            time.sleep(1) 
-            
-            # Simplified logic to find a "best move" at this depth
-            valid_moves = self.game_state.get_valid_moves()
-            if valid_moves:
-                # In your real code, this would be the result of a full
-                # minimax search at the current depth.
-                self.best_move_found = valid_moves[0]
-                
-        print("AI search completed normally.")
-        return self.best_move_found
+    # Base case: if we've reached the depth limit or the game is over, return the score
+    if depth == 0 or board.get_all_valid_moves_for_color(board.turn) == {}:
+        return evaluate_func(board), board
 
-# --- Other AI-related functions would be below here ---
-# (e.g., minimax, evaluation, etc.)
+    if maximizing_player:
+        max_eval = float('-inf')
+        best_move_board = None
+        # Get all valid moves for the current player (White)
+        for move_board in get_all_moves_as_boards(board, WHITE):
+            evaluation = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)[0]
+            if evaluation > max_eval:
+                max_eval = evaluation
+                best_move_board = move_board
+            alpha = max(alpha, evaluation)
+            if beta <= alpha:
+                break # Prune
+        return max_eval, best_move_board
+    else: # Minimizing player
+        min_eval = float('inf')
+        best_move_board = None
+        # Get all valid moves for the current player (Red)
+        for move_board in get_all_moves_as_boards(board, RED):
+            evaluation = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)[0]
+            if evaluation < min_eval:
+                min_eval = evaluation
+                best_move_board = move_board
+            beta = min(beta, evaluation)
+            if beta <= alpha:
+                break # Prune
+        return min_eval, best_move_board
 
+def get_all_moves_as_boards(board, color):
+    """
+    Generator function that yields a new Board object for each possible move.
+    """
+    all_moves = board.get_all_valid_moves_for_color(color)
+    for start_pos, end_positions in all_moves.items():
+        for end_pos in end_positions:
+            # Create a deep copy of the board to simulate the move on
+            temp_board = copy.deepcopy(board)
+            piece = temp_board.get_piece(start_pos[0], start_pos[1])
+            temp_board.move(piece, end_pos[0], end_pos[1])
+            # Switch the turn on the temporary board
+            temp_board.turn = RED if color == WHITE else WHITE
+            yield temp_board
