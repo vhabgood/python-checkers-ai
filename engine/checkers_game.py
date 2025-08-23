@@ -3,15 +3,19 @@ import pygame
 import logging
 import threading
 import queue
+import copy
 from .board import Board
-from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE
+from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS
 import engine.constants as constants
 from game_states import Button
 
-# Set up logging
 logger = logging.getLogger('gui')
 
 class CheckersGame:
+    """
+    Manages the main game state, including turns, player input,
+    AI interaction, and drawing the game.
+    """
     def __init__(self, screen, player_color_str):
         self.screen = screen
         self.board = Board()
@@ -23,15 +27,21 @@ class CheckersGame:
         self.selected_piece = None
         self.valid_moves = {}
         
+        # State machine attributes for StateManager
         self.done = False
         self.next_state = None
         
-        # --- Visual Toggles ---
+        # --- Visual and Gameplay Toggles ---
         self.show_board_numbers = False
         self.dev_mode = False
+        self.board_flipped = False
+        
+        # Move history for the undo feature
+        self.history = []
         
         self.large_font = pygame.font.SysFont(None, 22) 
         self.font = pygame.font.SysFont(None, 24)
+        self.number_font = pygame.font.SysFont(None, 18) # Font for board numbers
         
         self._create_buttons()
         self._update_valid_moves()
@@ -71,38 +81,55 @@ class CheckersGame:
 
     # --- Button Callback Methods ---
     def reset_game(self):
+        """Resets the game to its initial state."""
         logger.info("Reset Game button clicked.")
         self.board.create_board()
         self.turn = RED # Red always starts
         self.done = False
+        self.history = []
         self._update_valid_moves()
 
     def undo_move(self):
-        logger.info("Undo Move button clicked (not implemented).")
+        """Restores the board to the state before the last move."""
+        if not self.history:
+            logger.info("Undo Move button clicked: No moves to undo.")
+            return
+        
+        logger.info("Undo Move button clicked: Reverting to previous state.")
+        self.board = self.history.pop()
+        self.turn = RED if self.turn == WHITE else WHITE
+        self._update_valid_moves()
 
     def flip_board(self):
-        logger.info("Flip Board button clicked (not implemented).")
+        """Toggles the board's visual orientation."""
+        self.board_flipped = not self.board_flipped
+        logger.info(f"Flip Board button clicked. Board flipped: {self.board_flipped}")
         
     def toggle_board_numbers(self):
+        """Toggles the visibility of board square numbers."""
         self.show_board_numbers = not self.show_board_numbers
         self.board_nums_button.text = f"Board Nums: {'ON' if self.show_board_numbers else 'OFF'}"
         logger.info(f"Board numbers toggled {'ON' if self.show_board_numbers else 'OFF'}.")
         
     def toggle_dev_mode(self):
+        """Toggles developer mode."""
         self.dev_mode = not self.dev_mode
         self.dev_mode_button.text = f"Dev Mode: {'ON' if self.dev_mode else 'OFF'}"
         logger.info(f"Developer mode toggled {'ON' if self.dev_mode else 'OFF'}.")
         
     def export_to_pdn(self):
+        """Placeholder for PDN export functionality."""
         logger.info("Export to PDN button clicked (not implemented).")
 
     def force_ai_move(self):
+        """Triggers the AI to make a move if it's its turn."""
         logger.info("Force AI Move button clicked")
         if self.turn == self.ai_color:
             self.start_ai_turn()
 
     # --- AI Methods ---
     def start_ai_turn(self):
+        """Initiates the AI move calculation in a separate thread."""
         logger.info("Starting AI turn.")
         if self.ai_thread is None or not self.ai_thread.is_alive():
             logger.info("Starting AI calculation in a new thread...")
@@ -110,6 +137,7 @@ class CheckersGame:
             self.ai_thread.start()
 
     def run_ai_calculation(self):
+        """The AI's thinking process (currently a placeholder)."""
         try:
             if self.valid_moves:
                 all_moves = list(self.valid_moves.items())
@@ -127,6 +155,7 @@ class CheckersGame:
 
     # --- Core Game Logic Methods ---
     def _update_valid_moves(self):
+        """Recalculates all valid moves for the current player."""
         self.valid_moves = self.board.get_all_valid_moves_for_color(self.turn)
         if not self.valid_moves:
             self.done = True
@@ -134,12 +163,14 @@ class CheckersGame:
             logger.info(f"Game over! {constants.PLAYER_NAMES[winner]} wins.")
 
     def _change_turn(self):
+        """Switches the turn to the other player."""
         self.selected_piece = None
         self.turn = RED if self.turn == WHITE else WHITE
         logger.info(f"Turn changed to {constants.PLAYER_NAMES[self.turn]}")
         self._update_valid_moves()
 
     def _select(self, row, col):
+        """Handles a click on a board square."""
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
             if start_pos in self.valid_moves and (row, col) in self.valid_moves[start_pos]:
@@ -155,6 +186,9 @@ class CheckersGame:
             self.selected_piece = None
 
     def _apply_move(self, start_pos, end_pos):
+        """Applies a move to the board and saves the previous state."""
+        self.history.append(copy.deepcopy(self.board))
+        
         piece = self.board.get_piece(start_pos[0], start_pos[1])
         captured_piece = self.board.move(piece, end_pos[0], end_pos[1])
 
@@ -170,14 +204,20 @@ class CheckersGame:
 
     # --- Event and Drawing Methods ---
     def _handle_click(self, pos):
+        """Handles a mouse click event from the user."""
         if self.turn != self.player_color or self.done:
             return
             
         if pos[0] < BOARD_SIZE:
             row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
+            
+            if self.board_flipped:
+                row, col = ROWS - 1 - row, COLS - 1 - col
+                
             self._select(row, col)
 
     def draw_info_panel(self):
+        """Draws the side panel with game info and buttons."""
         panel_x = BOARD_SIZE
         panel_width = self.screen.get_width() - BOARD_SIZE
         
@@ -186,20 +226,25 @@ class CheckersGame:
         turn_text = self.large_font.render(f"{constants.PLAYER_NAMES[self.turn]}'s Turn", True, constants.COLOR_TEXT)
         self.screen.blit(turn_text, (panel_x + 10, 20))
         
-        red_captured = 12 - self.board.white_left
-        white_captured = 12 - self.board.red_left
+        # --- Updated Piece Count Display ---
+        red_men = self.board.red_left - self.board.red_kings
+        white_men = self.board.white_left - self.board.white_kings
         
-        red_text = self.font.render(f"Red Captured: {red_captured}", True, RED)
-        self.screen.blit(red_text, (panel_x + 10, 80))
+        red_text = self.font.render(f"Red: {red_men}+{self.board.red_kings}", True, RED)
+        self.screen.blit(red_text, (panel_x + 10, 60))
         
-        white_text = self.font.render(f"White Captured: {white_captured}", True, WHITE)
-        self.screen.blit(white_text, (panel_x + 10, 120))
+        white_text = self.font.render(f"White: {white_men}+{self.board.white_kings}", True, WHITE)
+        self.screen.blit(white_text, (panel_x + 10, 90))
+        
+        score_text = self.font.render("Positional Score:", True, constants.COLOR_TEXT)
+        self.screen.blit(score_text, (panel_x + 10, 120))
         
         for button in self.buttons:
             button.draw(self.screen)
 
     def draw(self):
-        self.board.draw(self.screen, self.show_board_numbers)
+        """Main drawing method for the game state."""
+        self.board.draw(self.screen, self.number_font, self.show_board_numbers, self.board_flipped)
         self.draw_info_panel()
 
         if self.selected_piece:
@@ -207,8 +252,11 @@ class CheckersGame:
             if start_pos in self.valid_moves:
                 for move in self.valid_moves[start_pos]:
                     row, col = move
+                    
+                    draw_row, draw_col = (ROWS - 1 - row, COLS - 1 - col) if self.board_flipped else (row, col)
+
                     pygame.draw.circle(self.screen, (0, 255, 0),
-                                       (col * SQUARE_SIZE + SQUARE_SIZE // 2, row * SQUARE_SIZE + SQUARE_SIZE // 2), 15)
+                                       (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2), 15)
 
         if self.done:
             winner = RED if self.turn == WHITE else WHITE
@@ -217,6 +265,7 @@ class CheckersGame:
             self.screen.blit(end_text, text_rect)
 
     def update(self):
+        """Updates the game state, primarily checking for AI moves."""
         try:
             start_pos, end_pos = self.ai_move_queue.get_nowait()
             if start_pos and end_pos:
@@ -225,6 +274,7 @@ class CheckersGame:
             pass
 
     def handle_events(self, events):
+        """Handles all user input events."""
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 for button in self.buttons:
@@ -232,4 +282,4 @@ class CheckersGame:
                         button.callback()
                         break 
                 else: 
-                    self.current_state.handle_events(events)
+                    self._handle_click(event.pos)
