@@ -57,26 +57,27 @@ class CheckersGame:
         panel_x = BOARD_SIZE + 10
         button_width = self.screen.get_width() - BOARD_SIZE - 20
         button_height = 32 
+        y_start = self.screen.get_height() - 50
         
+        # Buttons are now stacked from the bottom up
         button_defs = [
-            ("Force AI Move", self.force_ai_move, 220),
-            ("Reset Board", self.reset_game, 260),
-            ("Undo Move", self.undo_move, 300),
-            ("Flip Board", self.flip_board, 340),
-            ("Board Nums: OFF", self.toggle_board_numbers, 380),
-            ("Dev Mode: OFF", self.toggle_dev_mode, 420),
-            ("Export to PDN", self.export_to_pdn, 460)
+            ("Export to PDN", self.export_to_pdn, y_start),
+            ("Dev Mode: OFF", self.toggle_dev_mode, y_start - 40),
+            ("Board Nums: OFF", self.toggle_board_numbers, y_start - 80),
+            ("Flip Board", self.flip_board, y_start - 120),
+            ("Undo Move", self.undo_move, y_start - 160),
+            ("Reset Board", self.reset_game, y_start - 200),
+            ("Force AI Move", self.force_ai_move, y_start - 240)
         ]
         
         for text, callback, y_pos in button_defs:
             button = Button(text, (panel_x, y_pos), (button_width, button_height), callback)
             self.buttons.append(button)
         
-        depth_btn_y = 180
+        depth_btn_y = y_start - 280
         self.buttons.append(Button("-", (panel_x, depth_btn_y), (30, 30), self.decrease_ai_depth))
         self.buttons.append(Button("+", (panel_x + button_width - 30, depth_btn_y), (30, 30), self.increase_ai_depth))
         
-        # Store references by iterating to avoid index errors
         for btn in self.buttons:
             if "Board Nums" in btn.text: self.board_nums_button = btn
             elif "Dev Mode" in btn.text: self.dev_mode_button = btn
@@ -250,14 +251,15 @@ class CheckersGame:
         y_offset = 30
         for i, (score, path) in enumerate(self.ai_top_moves):
             move_strs = []
-            # Shorten the sequence to the first 4 moves to fit the panel
-            for move in path[:4]:
-                start_pos, end_pos = move
+            # Fix: Iterate through pairs of coordinates in the path to form moves
+            for j in range(len(path) - 1):
+                start_pos, end_pos = path[j], path[j+1]
                 start_sq = COORD_TO_ACF.get(start_pos, '?')
                 end_sq = COORD_TO_ACF.get(end_pos, '?')
                 move_strs.append(f"{start_sq}-{end_sq}")
             
-            line = f"{i+1}. {', '.join(move_strs):<25} Score: {score:.2f}"
+            # Display up to the first 3 moves in the sequence
+            line = f"{i+1}. {', '.join(move_strs[:3]):<25} Score: {score:.2f}"
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
             self.screen.blit(text_surf, (20, panel_y + y_offset))
             y_offset += 15
@@ -287,6 +289,7 @@ class CheckersGame:
             best_move = self.ai_move_queue.get_nowait()
             if best_move:
                 turn_before_move = self.turn
+                # best_move is the full path, we only need the first step
                 self._apply_move(best_move[0], best_move[1])
                 if self.turn == turn_before_move:
                     logger.info("AI multi-jump detected. Forcing next move.")
