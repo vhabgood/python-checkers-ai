@@ -3,7 +3,10 @@
 Contains the evaluation function for the AI.
 This function analyzes a board state and returns a score.
 """
+import logging
 from .piece import Piece
+
+logger = logging.getLogger('board')
 
 def evaluate_board(board):
     """
@@ -11,17 +14,13 @@ def evaluate_board(board):
 
     A positive score indicates an advantage for White.
     A negative score indicates an advantage for Red.
-
-    Args:
-        board (Board): The board object to evaluate.
-
-    Returns:
-        float: The calculated score for the board position.
     """
     # Simple material score: kings are worth more than regular men.
     white_score = (board.white_left - board.white_kings) * 1.0 + board.white_kings * 1.5
     red_score = (board.red_left - board.red_kings) * 1.0 + board.red_kings * 1.5
     
-    # TODO: We can add more advanced positional scoring here based on your feedback.
+    final_score = white_score - red_score
     
-    return white_score - red_score
+    logger.debug(f"Evaluation: White Score={white_score:.2f}, Red Score={red_score:.2f}, Final Score={final_score:.2f}")
+    
+    return final_score

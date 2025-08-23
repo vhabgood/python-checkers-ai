@@ -5,44 +5,32 @@ board_py_content = """
 # engine/board.py
 import pygame
 import logging
-from .constants import BLACK, RED, WHITE, SQUARE_SIZE, COLS, ROWS, BOARD_SIZE
+from .constants import BLACK, RED, WHITE, SQUARE_SIZE, COLS, ROWS
 from .piece import Piece
 
 logger = logging.getLogger('board')
 
 class Board:
+    \"\"\"
+    Represents the game board, managing piece layout, moves, and drawing.
+    \"\"\"
     def __init__(self):
-        # THIS IS A TEST TO PROVE THE FILE HAS BEEN UPDATED
-        raise SystemExit("THE NEW BOARD.PY FILE IS RUNNING!")
-
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
+        self.turn = RED # The turn is now part of the board's state
         self.create_board()
+        self.number_font = pygame.font.SysFont(None, 18)
         logger.debug("Board initialized.")
-        self.print_board_state()
-
-    def print_board_state(self):
-        \"\"\"Prints the board state to the debug log.\"\"\"
-        board_str = "\\n"
-        for row_idx, row in enumerate(self.board):
-            row_str = f"Row {row_idx}: "
-            for piece in row:
-                if piece == 0:
-                    row_str += "  . "
-                else:
-                    color_char = '?'
-                    if piece.color == RED:
-                        color_char = 'R'
-                    elif piece.color == WHITE:
-                        color_char = 'W'
-
-                    king_char = 'K' if piece.king else 'M'
-                    row_str += f" {color_char}{king_char} "
-            board_str += row_str + "\\n"
-        logger.debug(board_str)
 
     def create_board(self):
+        \"\"\"
+        Initializes the board with pieces in their starting positions.
+        Also resets piece counts.
+        \"\"\"
+        self.board = []
+        self.red_left = self.white_left = 12
+        self.red_kings = self.white_kings = 0
         for row in range(ROWS):
             self.board.append([])
             for col in range(COLS):
@@ -56,20 +44,29 @@ class Board:
                 else:
                     self.board[row].append(0)
 
-    def draw_squares(self, screen):
+    def draw_squares(self, screen, number_font, show_numbers=False, flipped=False):
+        \"\"\"Draws the checkerboard squares.\"\"\"
         screen.fill(BLACK)
         for row in range(ROWS):
             for col in range(COLS):
-                if (row + col) % 2 == 1:
-                    pygame.draw.rect(screen, (181, 136, 99), (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
-                else:
-                    pygame.draw.rect(screen, (227, 206, 187), (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+                square_num = (row * 4) + (col // 2) + 1
 
+                draw_row, draw_col = (ROWS - 1 - row, COLS - 1 - col) if flipped else (row, col)
+
+                if (row + col) % 2 == 1: # Dark squares
+                    pygame.draw.rect(screen, (181, 136, 99), (draw_col * SQUARE_SIZE, draw_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+                    if show_numbers:
+                        num_surf = number_font.render(str(square_num), True, (255, 255, 255))
+                        screen.blit(num_surf, (draw_col * SQUARE_SIZE + 2, draw_row * SQUARE_SIZE + 2))
+                else: # Light squares
+                    pygame.draw.rect(screen, (227, 206, 187), (draw_col * SQUARE_SIZE, draw_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
     def get_piece(self, row, col):
+        \"\"\"Gets a piece object from a given row and column.\"\"\"
         return self.board[row][col]
 
     def get_all_pieces(self, color):
+        \"\"\"Gets a list of all piece objects for a given color.\"\"\"
         pieces = []
         for row in self.board:
             for piece in row:
@@ -78,6 +75,7 @@ class Board:
         return pieces
 
     def move(self, piece, row, col):
+        \"\"\"Moves a piece and handles captures.\"\"\"
         self.board[piece.row][piece.col], self.board[row][col] = self.board[row][col], self.board[piece.row][piece.col]
 
         captured_piece = None
@@ -105,13 +103,14 @@ class Board:
 
         return captured_piece
 
-    def draw(self, screen):
-        self.draw_squares(screen)
+    def draw(self, screen, number_font, show_numbers=False, flipped=False):
+        \"\"\"Draws the entire board, including squares and pieces.\"\"\"
+        self.draw_squares(screen, number_font, show_numbers, flipped)
         for row in range(ROWS):
             for col in range(COLS):
                 piece = self.board[row][col]
                 if piece != 0:
-                    piece.draw(screen)
+                    piece.draw(screen, flipped)
 
     def get_all_valid_moves_for_color(self, color):
         \"\"\"Gets all valid moves for a given color, respecting the forced jump rule.\"\"\"
@@ -122,7 +121,6 @@ class Board:
                 moves[(piece.row, piece.col)] = list(jumps.keys())
 
         if moves:
-            logger.debug(f"Found jumps for {color}: {moves}")
             return moves
 
         for piece in self.get_all_pieces(color):
@@ -130,7 +128,6 @@ class Board:
             if slides:
                 moves[(piece.row, piece.col)] = list(slides.keys())
 
-        logger.debug(f"Found slides for {color}: {moves}")
         return moves
 
     def _get_slides_for_piece(self, row, col):
@@ -177,7 +174,6 @@ file_path = os.path.join('engine', 'board.py')
 
 try:
     print(f"Attempting to overwrite '{file_path}' with the correct version...")
-    # Write the content to the local file
     with open(file_path, 'w') as f:
         f.write(board_py_content.strip())
 

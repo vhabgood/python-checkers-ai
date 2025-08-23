@@ -1,4 +1,4 @@
-# main.py
+#main.py
 """
 The main entry point for the checkers game application.
 Initializes Pygame, manages game states, and handles the main game loop.
@@ -12,7 +12,10 @@ import os
 
 from engine.checkers_game import CheckersGame
 from game_states import LoadingScreen, PlayerSelectionScreen
-from engine.constants import FPS
+from engine.constants import FPS, WIDTH
+
+# --- Main window height, now larger to accommodate the dev panel ---
+WIN_HEIGHT = 600
 
 def configure_logging(args):
     """
@@ -30,7 +33,6 @@ def configure_logging(args):
     log_filename = os.path.join(log_dir, f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_checkers_debug.log")
     
     class CustomFormatter(logging.Formatter):
-        """Custom formatter to show relative paths in log messages."""
         def format(self, record):
             pathname = record.pathname
             if pathname.startswith(os.getcwd()):
@@ -42,7 +44,7 @@ def configure_logging(args):
     file_handler.setFormatter(CustomFormatter('%(asctime)s - %(pathname)s:%(lineno)d - %(name)s - %(levelname)s - %(message)s'))
     
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.WARNING)
     console_handler.setFormatter(CustomFormatter('%(name)s - %(levelname)s - %(message)s'))
 
     logging.basicConfig(level=log_level, handlers=[file_handler, console_handler])
@@ -73,12 +75,10 @@ class StateManager:
         while self.running:
             events = pygame.event.get()
             
-            # Handle state transitions when a state signals it is 'done'.
             if self.current_state.done:
                 next_state_name = self.current_state.next_state
                 
                 if next_state_name is None:
-                    # If the game is over, show the final screen for a moment then exit.
                     self.current_state.draw()
                     pygame.display.flip()
                     pygame.time.wait(3000)
@@ -86,19 +86,16 @@ class StateManager:
                     continue
 
                 if next_state_name == "game":
-                    # Special case: Initialize the main game state with the player's choice.
                     player_choice = self.current_state.player_choice
                     self.states["game"] = CheckersGame(self.screen, player_choice)
                 
                 self.current_state = self.states[next_state_name]
             
-            # Delegate event handling, updates, and drawing to the current state.
             if self.current_state is not None:
                 self.current_state.handle_events(events)
                 self.current_state.update()
                 self.current_state.draw()
             
-            # Global quit event.
             for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
@@ -107,7 +104,7 @@ class StateManager:
             clock.tick(FPS)
             
         pygame.quit()
-        
+
 # --- Main execution block ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="A checkers game with an AI engine.")
@@ -118,7 +115,7 @@ if __name__ == "__main__":
     configure_logging(args)
     
     pygame.init()
-    window_size = (600, 480)
+    window_size = (WIDTH, WIN_HEIGHT) # Use new height
     screen = pygame.display.set_mode(window_size)
     pygame.display.set_caption("Checkers")
     

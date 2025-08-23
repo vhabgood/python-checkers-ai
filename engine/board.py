@@ -14,6 +14,7 @@ class Board:
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
+        self.turn = RED
         self.create_board()
         logger.debug("Board initialized.")
 
