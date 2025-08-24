@@ -1,7 +1,4 @@
 # engine/constants.py
-"""
-Stores all the global constants for the game.
-"""
 import pygame
 
 # --- Game Settings ---
@@ -10,8 +7,8 @@ DEFAULT_AI_DEPTH = 5
 
 # --- Dimensions ---
 BOARD_SIZE = 480
-INFO_WIDTH = 200 # Increased from 120
-WIDTH, HEIGHT = BOARD_SIZE + INFO_WIDTH, BOARD_SIZE
+INFO_WIDTH = 200
+WIDTH, HEIGHT = BOARD_SIZE + INFO_WIDTH, BOARD_SIZE + 120 # Increased height for dev panel
 ROWS, COLS = 8, 8
 SQUARE_SIZE = BOARD_SIZE // COLS
 PIECE_RADIUS = SQUARE_SIZE // 2 - 6

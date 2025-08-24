@@ -13,34 +13,27 @@ def evaluate_board(board):
     """
     Analyzes the board and returns a score from the perspective of the White player.
     """
-    # --- 1. Material Score (heavily weighted) ---
+    # 1. Material Score (heavily weighted)
     white_material = (board.white_left - board.white_kings) * 1.0 + board.white_kings * 1.5
     red_material = (board.red_left - board.red_kings) * 1.0 + board.red_kings * 1.5
     material_score = white_material - red_material
 
-    # --- 2. Positional & Mobility Scores ---
-    center_control_score = 0
+    # 2. Positional & Tactical Scores
+    white_moves = board.get_all_valid_moves_for_color(WHITE)
+    red_moves = board.get_all_valid_moves_for_color(RED)
     
-    # Calculate mobility for both sides
-    white_moves_count = len(board.get_all_valid_moves_for_color(WHITE))
-    red_moves_count = len(board.get_all_valid_moves_for_color(RED))
-    mobility_score = 0.1 * (white_moves_count - red_moves_count)
-
-    for r in range(ROWS):
-        for c in range(COLS):
-            piece = board.get_piece(r, c)
-            if isinstance(piece, Piece):
-                # Center Control Bonus: add a small bonus for pieces in or near the center
-                if c in [2, 3, 4, 5]:
-                    if piece.color == WHITE:
-                        center_control_score += 0.1
-                    else:
-                        center_control_score -= 0.1
-
-    # --- Final Score Calculation ---
-    # Material score is multiplied by 100 to make it the dominant factor.
-    final_score = (material_score * 100) + center_control_score + mobility_score
+    # Mobility Score: bonus for having more moves
+    mobility_score = 0.1 * (len(white_moves) - len(red_moves))
     
-    logger.debug(f"Eval Breakdown: Material={material_score*100:.2f}, Center={center_control_score:.2f}, Mobility={mobility_score:.2f} | Final={final_score:.2f}")
+    # Jump Potential Score: bonus for having available captures
+    white_jumps = sum(1 for moves in white_moves.values() if abs(list(moves.keys())[0][0] - list(white_moves.keys())[0][0]) > 1)
+    red_jumps = sum(1 for moves in red_moves.values() if abs(list(moves.keys())[0][0] - list(red_moves.keys())[0][0]) > 1)
+    jump_score = 0.5 * (white_jumps - red_jumps)
+
+    # Final Score Calculation
+    final_score = (material_score * 100) + mobility_score + jump_score
+    
+    # Logging is removed from here to keep log files small.
+    # We can add it back temporarily if we need to debug the evaluation itself.
     
     return final_score
