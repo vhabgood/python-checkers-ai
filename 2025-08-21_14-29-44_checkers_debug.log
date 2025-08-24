@@ -1,8 +1,0 @@
-2025-08-21 14:29:44 - gui - INFO - CheckersGame initialized with mode: human, no-db: False
-2025-08-21 14:29:49 - gui - INFO - Button clicked: Force AI Move
-2025-08-21 14:29:49 - gui - INFO - Force AI Move button clicked
-2025-08-21 14:29:49 - gui - INFO - Starting AI turn.
-2025-08-21 14:29:49 - gui - INFO - Starting AI calculation in a new thread...
-2025-08-21 14:29:51 - gui - INFO - AI calculation completed.
-2025-08-21 14:29:51 - gui - INFO - No move to apply.
-2025-08-21 14:29:55 - gui - INFO - Pygame window closed

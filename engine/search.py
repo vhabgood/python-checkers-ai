@@ -1,19 +1,39 @@
 # engine/search.py
-import copy
 from .constants import RED, WHITE
+import copy
 
 def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
+    """
+    Determines the best move for the AI.
+    This function now handles cases where no moves are available.
+    """
     is_maximizing = ai_color == WHITE
+    
+    # First, get all possible starting moves for the AI
+    possible_moves = list(get_all_moves(board, ai_color))
+
+    # FIX: Check if the AI has any moves. If not, the game is over for this player.
+    # Return an empty path to signify that no move can be made, preventing a crash.
+    if not possible_moves:
+        print("DEBUG: AI has no valid moves available. Returning an empty move path.")
+        return [], []
+
     all_scored_moves = []
-    for move_path, move_board in get_all_moves(board, ai_color):
+    # Continue analysis using the pre-calculated possible_moves
+    for move_path, move_board in possible_moves:
+        # The minimax function is called to evaluate the board after the first move
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
         full_path = move_path + subsequent_path
         all_scored_moves.append((score, full_path))
-    if not all_scored_moves:
-        return None, []
+    
+    # Sort moves based on score (descending for AI, ascending for opponent)
     all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
+    
+    # The best path is the sequence of coordinates for the highest-scoring move
     best_path = all_scored_moves[0][1]
+    # Also return the top 5 moves for potential analysis or display
     top_5_paths = all_scored_moves[:5]
+    
     return best_path, top_5_paths
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):

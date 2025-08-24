@@ -122,20 +122,34 @@ class CheckersGame:
         self.ai_thread.start()
 
     def run_ai_calculation(self):
+        # This function runs in a separate thread to keep the game responsive.
         try:
+            # FIX: We now check the data type from the board to prevent crashes.
+            # The AI search expects a dictionary, but was receiving a list.
+            # This check will log a specific error if the board returns the wrong type.
+            moves = self.board.get_all_valid_moves_for_color(self.ai_color)
+            if not isinstance(moves, dict):
+                logger.error(f"AI ABORTED: board.get_all_valid_moves_for_color() returned a {type(moves)}, but AI expects a dict.")
+                self.ai_move_queue.put(None)
+                return
+
             best_move_path, top_moves = get_ai_move_analysis(self.board, self.ai_depth, self.ai_color, evaluate_board)
+
             if best_move_path:
                 self.positional_score = top_moves[0][0]
                 self.ai_top_moves = top_moves
                 self.ai_move_queue.put(best_move_path)
             else:
+                # If AI returns an empty path (no moves), put None on the queue.
                 self.ai_move_queue.put(None)
         except Exception as e:
             logger.error(f"AI calculation failed: {e}")
             self.ai_move_queue.put(None)
         finally:
             self.ai_is_thinking = False
-            logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
+            # This log message was moved to appear only when a valid score is found.
+            if self.ai_top_moves:
+                 logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
 
     def _update_valid_moves(self):
         self.valid_moves = self.board.get_all_valid_moves_for_color(self.turn)
@@ -163,6 +177,12 @@ class CheckersGame:
             self.selected_piece = None
 
     def _apply_move_sequence(self, path):
+        # FIX: Added a check to ensure the path is valid before proceeding.
+        if not path or len(path) < 2:
+            logger.warning("AI tried to apply an invalid move sequence.")
+            self._change_turn()
+            return
+
         self.history.append(copy.deepcopy(self.board))
         self.move_history.append(path)
         for i in range(len(path) - 1):
@@ -257,7 +277,9 @@ class CheckersGame:
     def update(self):
         try:
             best_move_path = self.ai_move_queue.get_nowait()
-            if best_move_path:
+            # FIX: Added a check to ensure best_move_path is a non-empty list.
+            # The AI can now return an empty list or None, both of which mean "no move".
+            if best_move_path and isinstance(best_move_path, list):
                 self._apply_move_sequence(best_move_path)
         except queue.Empty:
             pass

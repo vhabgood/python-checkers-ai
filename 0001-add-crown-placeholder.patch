@@ -1,7 +1,0 @@
---- a/engine/constants.py
-+++ b/engine/constants.py
-@@ -16,3 +16,4 @@
- # --- Game Pieces ---
- # The CROWN image will be loaded in the main game class, not here.
- CROWN_PATH = 'resources/crown.png'
-+CROWN = None

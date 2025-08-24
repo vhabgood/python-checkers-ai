@@ -1,12 +1,7 @@
 # game_states.py
-"""
-Defines the different states of the application, such as the loading screen
-and player selection menu. Also contains the universal Button class.
-"""
 import pygame
 import logging
 import time
-
 from engine.constants import (
     COLOR_BG, COLOR_BUTTON, COLOR_BUTTON_HOVER, COLOR_TEXT,
     RED, WHITE, PLAYER_NAMES
@@ -15,34 +10,28 @@ from engine.constants import (
 logger = logging.getLogger('gui')
 
 class Button:
-    """A simple, reusable clickable button class."""
     def __init__(self, text, pos, size, callback):
         self.text = text
         self.pos = pos
         self.size = size
-        self.callback = callback # The function to call when clicked
+        self.callback = callback
         self.rect = pygame.Rect(pos, size)
         self.font = pygame.font.SysFont(None, 18) 
         self.hovered = False
 
     def draw(self, screen):
-        """Draws the button and handles hover effect."""
         mouse_pos = pygame.mouse.get_pos()
         self.hovered = self.rect.collidepoint(mouse_pos)
-        
         button_color = COLOR_BUTTON_HOVER if self.hovered else COLOR_BUTTON
         pygame.draw.rect(screen, button_color, self.rect)
-        
         text_surf = self.font.render(self.text, True, COLOR_TEXT)
         text_rect = text_surf.get_rect(center=self.rect.center)
         screen.blit(text_surf, text_rect)
 
     def is_clicked(self, pos):
-        """Checks if a click position is within the button's bounds."""
         return self.rect.collidepoint(pos)
 
 class BaseState:
-    """A base class for all game states, ensuring a consistent interface."""
     def __init__(self, screen):
         self.screen = screen
         self.done = False
@@ -51,15 +40,12 @@ class BaseState:
 
     def handle_events(self, events):
         raise NotImplementedError
-
     def update(self):
         raise NotImplementedError
-
     def draw(self):
         raise NotImplementedError
 
 class LoadingScreen(BaseState):
-    """A simple loading screen that simulates loading resources."""
     def __init__(self, screen):
         super().__init__(screen)
         self.next_state = "player_selection"
@@ -69,15 +55,14 @@ class LoadingScreen(BaseState):
         logger.info("LoadingScreen initialized.")
 
     def handle_events(self, events):
-        pass # No user interaction on the loading screen
+        pass
 
     def update(self):
-        """Cycles through loading messages to simulate progress."""
         current_time = time.time()
         if current_time - self.last_update_time > 0.5:
             self.current_status_index += 1
             if self.current_status_index >= len(self.loading_status):
-                self.done = True # Signal to StateManager to transition
+                self.done = True
                 logger.info("Loading complete. Transitioning to player selection.")
             self.last_update_time = current_time
 
@@ -88,7 +73,6 @@ class LoadingScreen(BaseState):
         self.screen.blit(status_text, status_rect)
         
 class PlayerSelectionScreen(BaseState):
-    """Allows the user to select which color they want to play as."""
     def __init__(self, screen):
         super().__init__(screen)
         self.next_state = "game"
@@ -100,7 +84,6 @@ class PlayerSelectionScreen(BaseState):
         logger.info("PlayerSelectionScreen initialized.")
 
     def handle_events(self, events):
-        """Handles clicks on the color selection buttons."""
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = pygame.mouse.get_pos()
@@ -108,18 +91,17 @@ class PlayerSelectionScreen(BaseState):
                     if button['rect'].collidepoint(mouse_pos):
                         player_color_name = PLAYER_NAMES.get(button['player'])
                         self.player_choice = player_color_name.lower()
-                        self.done = True # Signal to StateManager to start the game
+                        self.done = True
                         logger.info(f"Player selected {player_color_name}.")
 
     def update(self):
-        pass # No dynamic updates needed for this screen
+        pass
 
     def draw(self):
         self.screen.fill(COLOR_BG)
         title_text = self.font.render("Choose Your Side", True, COLOR_TEXT)
         title_rect = title_text.get_rect(center=(self.screen.get_width() / 2, 100))
         self.screen.blit(title_text, title_rect)
-        
         for button in self.buttons:
             pygame.draw.rect(self.screen, COLOR_BUTTON, button['rect'])
             text_surf = self.font.render(button['text'], True, COLOR_TEXT)

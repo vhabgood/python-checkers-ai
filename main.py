@@ -14,11 +14,9 @@ def configure_logging(args):
     log_level = logging.INFO
     if args.debug_gui or args.debug_board:
         log_level = logging.DEBUG
-
     log_dir = "logs"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-
     log_filename = os.path.join(log_dir, f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_checkers_debug.log")
     
     class CustomFormatter(logging.Formatter):
@@ -31,13 +29,10 @@ def configure_logging(args):
     file_handler = logging.FileHandler(log_filename)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(CustomFormatter('%(asctime)s - %(pathname)s:%(lineno)d - %(name)s - %(levelname)s - %(message)s'))
-    
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.WARNING)
     console_handler.setFormatter(CustomFormatter('%(name)s - %(levelname)s - %(message)s'))
-
     logging.basicConfig(level=log_level, handlers=[file_handler, console_handler])
-
     logging.getLogger('gui').setLevel(logging.INFO if not args.debug_gui else logging.DEBUG)
     logging.getLogger('board').setLevel(logging.INFO if not args.debug_board else logging.DEBUG)
 
@@ -56,21 +51,17 @@ class StateManager:
         clock = pygame.time.Clock()
         while self.running:
             events = pygame.event.get()
-            
             if self.current_state.done:
                 next_state_name = self.current_state.next_state
-                
                 if next_state_name is None:
                     self.current_state.draw()
                     pygame.display.flip()
                     pygame.time.wait(3000)
                     self.running = False
                     continue
-
                 if next_state_name == "game":
                     player_choice = self.current_state.player_choice
                     self.states["game"] = CheckersGame(self.screen, player_choice)
-                
                 self.current_state = self.states[next_state_name]
             
             if self.current_state is not None:
@@ -84,7 +75,6 @@ class StateManager:
             
             pygame.display.flip()
             clock.tick(FPS)
-            
         pygame.quit()
 
 if __name__ == "__main__":
@@ -92,13 +82,10 @@ if __name__ == "__main__":
     parser.add_argument("--debug-gui", action="store_true", help="Enable debug logging for GUI.")
     parser.add_argument("--debug-board", action="store_true", help="Enable debug logging for board.")
     args = parser.parse_args()
-
     configure_logging(args)
-    
     pygame.init()
     window_size = (WIDTH, HEIGHT)
     screen = pygame.display.set_mode(window_size)
     pygame.display.set_caption("Checkers")
-    
     game_manager = StateManager(screen)
     game_manager.run()
