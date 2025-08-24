@@ -1,8 +1,4 @@
-#main.py
-"""
-The main entry point for the checkers game application.
-Initializes Pygame, manages game states, and handles the main game loop.
-"""
+# main.py
 import pygame
 import logging
 import datetime
@@ -12,16 +8,9 @@ import os
 
 from engine.checkers_game import CheckersGame
 from game_states import LoadingScreen, PlayerSelectionScreen
-from engine.constants import FPS, WIDTH
-
-# --- Main window height, now larger to accommodate the dev panel ---
-WIN_HEIGHT = 600
+from engine.constants import FPS, WIDTH, HEIGHT
 
 def configure_logging(args):
-    """
-    Configures logging to output to both a file and the console.
-    Sets the logging level based on command-line arguments.
-    """
     log_level = logging.INFO
     if args.debug_gui or args.debug_board:
         log_level = logging.DEBUG
@@ -53,9 +42,6 @@ def configure_logging(args):
     logging.getLogger('board').setLevel(logging.INFO if not args.debug_board else logging.DEBUG)
 
 class StateManager:
-    """
-    Manages the different states of the game (e.g., loading, menu, gameplay).
-    """
     def __init__(self, screen):
         self.screen = screen
         self.states = {
@@ -67,10 +53,6 @@ class StateManager:
         self.running = True
 
     def run(self):
-        """
-        The main game loop. Handles event processing, state updates,
-        drawing, and state transitions.
-        """
         clock = pygame.time.Clock()
         while self.running:
             events = pygame.event.get()
@@ -105,7 +87,6 @@ class StateManager:
             
         pygame.quit()
 
-# --- Main execution block ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="A checkers game with an AI engine.")
     parser.add_argument("--debug-gui", action="store_true", help="Enable debug logging for GUI.")
@@ -115,7 +96,7 @@ if __name__ == "__main__":
     configure_logging(args)
     
     pygame.init()
-    window_size = (WIDTH, WIN_HEIGHT) # Use new height
+    window_size = (WIDTH, HEIGHT)
     screen = pygame.display.set_mode(window_size)
     pygame.display.set_caption("Checkers")
     
