@@ -5,9 +5,12 @@ import logging # <--- Add this import
 
 logger = logging.getLogger('board') # <--- Add this line
 
+# engine/search.py
+
 def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
     """
-    The top-level AI function. It now correctly assembles the move path.
+    The top-level AI function. It now returns both the best move to execute
+    and the top 5 full sequences for the developer panel to display.
     """
     is_maximizing = ai_color == WHITE
     
@@ -18,28 +21,30 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
         return [], []
 
     all_scored_moves = []
+    # This loop gets the full predicted sequence for each possible first move
     for move_path, move_board in possible_moves:
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
-        
-        # CRITICAL FIX: The full path is just the initial move.
-        # We no longer add the opponent's predicted response.
-        full_path = move_path
-        all_scored_moves.append((score, full_path))
+        full_path_for_display = move_path + subsequent_path
+        # We store three things: the score, the full path for display, and the simple first move for execution
+        all_scored_moves.append((score, full_path_for_display, move_path))
     
+    # Sort all the potential outcomes by their score
     all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
     
-    best_path = all_scored_moves[0][1]
-    top_5_paths = all_scored_moves[:5]
+    # The best path FOR EXECUTION is just the first move from the top-scoring sequence
+    best_path_for_execution = all_scored_moves[0][2] 
+    
+    # The top 5 moves FOR DISPLAY are the scores and the full predicted paths
+    top_5_for_display = [(item[0], item[1]) for item in all_scored_moves[:5]]
+    
+    logger.debug(f"AI SEARCH: Best path chosen for execution: {best_path_for_execution}")
 
-    logger.debug(f"AI SEARCH: Best path chosen: {best_path}")
-
-    return best_path, top_5_paths
-
+    return best_path_for_execution, top_5_for_display
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The core recursive search algorithm. It now correctly returns only the
-    immediate best move in the current simulation.
+    The core recursive search algorithm. It's now restored to return the
+    full predicted path for analysis purposes.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
@@ -51,8 +56,8 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
-                # CRITICAL FIX: The best path is just this move, not the future ones.
-                best_path = path
+                # Restore path concatenation to build the full sequence for analysis
+                best_path = path + subsequent_path
             alpha = max(alpha, evaluation)
             if beta <= alpha:
                 break
@@ -63,8 +68,8 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
-                # CRITICAL FIX: The best path is just this move, not the future ones.
-                best_path = path
+                # Restore path concatenation to build the full sequence for analysis
+                best_path = path + subsequent_path
             beta = min(beta, evaluation)
             if beta <= alpha:
                 break

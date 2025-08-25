@@ -36,10 +36,11 @@ class CheckersGame:
         self.move_history = []
         # Font setup
         self.large_font = pygame.font.SysFont(None, 22) 
-        self.font = pygame.font.SysFont(None, 24)
+        self.font = pygame.font.SysFont(None, 20) #was 24
         self.small_font = pygame.font.SysFont(None, 18)
-        self.dev_font = pygame.font.SysFont('monospace', 16)
+        self.dev_font = pygame.font.SysFont('monospace', 12) #was 16
         self.number_font = pygame.font.SysFont(None, 18)
+        
         # AI threading and communication setup
         self.ai_move_queue = queue.Queue()
         self.ai_analysis_queue = queue.Queue()
@@ -56,25 +57,29 @@ class CheckersGame:
     # --- Button Callbacks and UI Toggles ---
 
     def _create_buttons(self):
-        """Initializes all the buttons for the side panel."""
         self.buttons = []
         panel_x = BOARD_SIZE + 10
-        button_width = self.screen.get_width() - BOARD_SIZE - 20
-        button_height = 32 
-        y_start = self.screen.get_height() - 50
+        button_width = self.screen.get_width() - BOARD_SIZE - 22
+        
+        # --- LAYOUT FIX ---
+        button_height = 30 # Was 32
+        # Start the buttons much higher to make room for the dev panel
+        y_start = self.screen.get_height() - 150 # Was - 50
+
         button_defs = [
             ("Export to PDN", self.export_to_pdn, y_start),
-            ("Dev Mode: OFF", self.toggle_dev_mode, y_start - 40),
-            ("Board Nums: OFF", self.toggle_board_numbers, y_start - 80),
-            ("Flip Board", self.flip_board, y_start - 120),
-            ("Undo Move", self.undo_move, y_start - 160),
-            ("Reset Board", self.reset_game, y_start - 200),
-            ("Force AI Move", self.force_ai_move, y_start - 240)
+            ("Dev Mode: OFF", self.toggle_dev_mode, y_start - 35),
+            ("Board Nums: OFF", self.toggle_board_numbers, y_start - 70),
+            ("Flip Board", self.flip_board, y_start - 105),
+            ("Undo Move", self.undo_move, y_start - 140),
+            ("Reset Board", self.reset_game, y_start - 175),
+            ("Force AI Move", self.force_ai_move, y_start - 210)
         ]
         for text, callback, y_pos in button_defs:
             button = Button(text, (panel_x, y_pos), (button_width, button_height), callback)
             self.buttons.append(button)
-        depth_btn_y = y_start - 280
+        
+        depth_btn_y = y_start - 245
         self.buttons.append(Button("-", (panel_x, depth_btn_y), (30, 30), self.decrease_ai_depth))
         self.buttons.append(Button("+", (panel_x + button_width - 30, depth_btn_y), (30, 30), self.increase_ai_depth))
         for btn in self.buttons:
@@ -203,34 +208,35 @@ class CheckersGame:
 
     def _select(self, row, col):
         """
-        Handles the logic for selecting a piece or selecting a destination square
-        for a selected piece.
+        Handles piece selection and move execution, now preventing deselection
+        during a mandatory multi-jump.
         """
-        # If a piece is already selected, check if the click is a valid move destination
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
             if start_pos in self.valid_moves and (row, col) in self.valid_moves[start_pos]:
-                # This move is a simple slide, as jumps are handled by their full path
                 self._apply_move_sequence([start_pos, (row, col)])
-            else: # Invalid move, so deselect the piece
-                self.selected_piece = None
-        # If no piece is selected, check if the click is on a piece that can move
+            else:
+                # CRITICAL FIX: Check if the player is in a forced jump sequence.
+                # If they are, do not allow them to deselect the piece.
+                is_forced_jump = False
+                if self.valid_moves and start_pos in self.valid_moves:
+                    # Check if the current valid moves are jumps (i.e., have captured pieces)
+                    if any(val for val in self.valid_moves[start_pos].values()):
+                        is_forced_jump = True
+                
+                if not is_forced_jump:
+                    self.selected_piece = None
+                    self._select(row, col) # Attempt to select a new piece
+
         elif (row, col) in self.valid_moves:
             self.selected_piece = self.board.get_piece(row, col)
-        else: # Click was not on a valid piece
+        else:
             self.selected_piece = None
 
     def _apply_move_sequence(self, path):
         """
-        The master function for executing a move on the main game board.
-        It correctly identifies jumps, removes captured pieces, moves the
-        player's piece, and changes the turn.
+        Executes a move sequence and now correctly handles multi-jumps for the player.
         """
-        # --- DEBUGGING TEXT ---
-        # This confirms what move is about to be physically applied to the board.
-        logger.debug(f"APPLY MOVE: Executing path: {path}")
-        # --- END DEBUGGING TEXT ---
-        
         if not path or len(path) < 2:
             logger.warning("Attempted to apply an invalid move sequence.")
             return
@@ -246,30 +252,34 @@ class CheckersGame:
             logger.error(f"Attempted to move a piece from an empty square at {start_pos}.")
             return
 
-        # Identify all jumped pieces during the move sequence
+        # Determine if the move was a jump and get captured pieces
         jumped_pieces = []
-        for i in range(len(path) - 1):
-            pos1 = path[i]
-            pos2 = path[i+1]
-            if abs(pos1[0] - pos2[0]) == 2: # A jump is a move of 2 rows
-                jumped_row = (pos1[0] + pos2[0]) // 2
-                jumped_col = (pos1[1] + pos2[1]) // 2
-                jumped_piece = self.board.get_piece(jumped_row, jumped_col)
-                if jumped_piece != 0:
-                    jumped_pieces.append(jumped_piece)
+        is_jump = abs(start_pos[0] - end_pos[0]) == 2
 
-        # Remove all jumped pieces from the board
+        if is_jump:
+            mid_row = (start_pos[0] + end_pos[0]) // 2
+            mid_col = (start_pos[1] + end_pos[1]) // 2
+            jumped_piece = self.board.get_piece(mid_row, mid_col)
+            if jumped_piece != 0:
+                jumped_pieces.append(jumped_piece)
+        
+        # Move the piece and remove any captured pieces
+        self.board.move(piece, end_pos[0], end_pos[1])
         if jumped_pieces:
             self.board._remove(jumped_pieces)
 
-        # Move the primary piece to its final destination
-        self.board.move(piece, end_pos[0], end_pos[1])
-        
-        # Animate the move on the screen
-        self.draw()
-        pygame.display.flip()
-        time.sleep(0.2)
+        # CRITICAL FIX: After a jump, check if more jumps are possible.
+        if is_jump:
+            # The piece object itself has been moved, so we use its new coordinates.
+            more_jumps = self.board._get_moves_for_piece(piece, find_jumps=True)
+            if more_jumps:
+                # If more jumps exist, do NOT change the turn.
+                # Instead, lock the selection to this piece and update valid moves.
+                self.selected_piece = piece
+                self.valid_moves = {(piece.row, piece.col): more_jumps}
+                return  # End the function here, skipping _change_turn()
 
+        # If it wasn't a jump or no more jumps are available, change the turn.
         self._change_turn()
 
     def _handle_click(self, pos):
@@ -284,23 +294,40 @@ class CheckersGame:
             self._select(row, col)
     
     # --- Drawing and Main Loop ---
-
     def _format_move_path(self, path):
         """
-        Formats a move path (list of coordinates) into a readable string
-        using standard algebraic notation. Uses '-' for slides and 'x' for jumps.
+        Formats a move path into a readable string. It can now handle both
+        simple single-turn paths and long multi-turn analytical paths.
         """
         if not path:
             return ""
 
-        move_acfs = [str(constants.COORD_TO_ACF.get(pos, '?')) for pos in path]
-
-        if len(path) == 2:
-            return f"{move_acfs[0]}-{move_acfs[1]}"
-        elif len(path) > 2:
-            return "x".join(move_acfs)
+        # This will hold the formatted moves, like "11-15", "22x15", etc.
+        formatted_moves = []
         
-        return move_acfs[0] if move_acfs else ""
+        # We process the path two coordinates at a time to form each move
+        i = 0
+        while i < len(path) - 1:
+            start_pos = path[i]
+            end_pos = path[i+1]
+            
+            # Convert coordinates to algebraic notation (e.g., 11, 15)
+            start_acf = constants.COORD_TO_ACF.get(start_pos, '?')
+            end_acf = constants.COORD_TO_ACF.get(end_pos, '?')
+            
+            # Determine if it's a jump or a slide
+            separator = 'x' if abs(start_pos[0] - end_pos[0]) == 2 else '-'
+            
+            formatted_moves.append(f"{start_acf}{separator}{end_acf}")
+            
+            # Check for multi-jumps within a single turn
+            # If the next "start" is the same as our "end", it's a continuation
+            if i + 2 < len(path) and path[i+1] == path[i+2]:
+                i += 1 # Skip the duplicate coordinate
+            else:
+                i += 2 # Move to the next pair
+
+        return " ".join(formatted_moves)
 
     def draw_move_history(self, start_y):
         """Draws the formatted move history panel."""
@@ -341,19 +368,18 @@ class CheckersGame:
         if self.ai_is_thinking:
             thinking_text = self.font.render("AI is Thinking...", True, (255, 255, 0))
             self.screen.blit(thinking_text, (panel_x + 10, 45))
-        self.draw_move_history(start_y=80)
+        self.draw_move_history(start_y=40)
         depth_label_text = self.small_font.render(f"AI Depth: {self.ai_depth}", True, WHITE)
-        text_rect = depth_label_text.get_rect(center=(panel_x + panel_width / 2, self.screen.get_height() - 315))
+        text_rect = depth_label_text.get_rect(center=(panel_x + panel_width / 2, self.screen.get_height() - 380))
         self.screen.blit(depth_label_text, text_rect)
         for button in self.buttons:
             button.draw(self.screen)
             
     def draw_dev_panel(self):
-        """Draws the AI analysis panel at the bottom of the screen."""
         if not self.dev_mode: return
         panel_y = BOARD_SIZE
         panel_height = self.screen.get_height() - BOARD_SIZE
-        pygame.draw.rect(self.screen, (10, 10, 30), (0, panel_y, BOARD_SIZE, panel_height))
+        pygame.draw.rect(self.screen, (10, 10, 30), (0, panel_y, BOARD_SIZE+220, panel_height))
         title_surf = self.font.render("--- AI Analysis ---", True, WHITE)
         self.screen.blit(title_surf, (10, panel_y + 5))
         y_offset = 30
@@ -362,7 +388,8 @@ class CheckersGame:
             line = f"{i+1}. {move_str:<25} Score: {score:.2f}"
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
             self.screen.blit(text_surf, (20, panel_y + y_offset))
-            y_offset += 15
+            # --- LAYOUT FIX ---
+            y_offset += 13 # Was 15
 
     def draw(self):
         """The main draw call for the entire game screen."""
