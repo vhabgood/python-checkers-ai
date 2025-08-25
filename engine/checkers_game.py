@@ -277,12 +277,27 @@ class CheckersGame:
     def update(self):
         try:
             best_move_path = self.ai_move_queue.get_nowait()
-            # FIX: Added a check to ensure best_move_path is a non-empty list.
-            # The AI can now return an empty list or None, both of which mean "no move".
+
+            # Case 1: AI returned a valid move path (a non-empty list).
             if best_move_path and isinstance(best_move_path, list):
                 self._apply_move_sequence(best_move_path)
+
+            # Case 2: AI returned an empty list []. This means it has no moves and loses.
+            elif isinstance(best_move_path, list) and not best_move_path:
+                logger.info(f"AI ({constants.PLAYER_NAMES[self.ai_color]}) has no valid moves. Player wins!")
+                self.done = True  # End the game
+
+            # Case 3: A fallback for when the AI fails and returns None.
+            elif best_move_path is None:
+                logger.warning("AI calculation failed and returned None. Turn will be skipped.")
+
         except queue.Empty:
+            # This is normal, means the AI is still thinking or it's the player's turn.
             pass
+
+        # If the game isn't over, and it's the AI's turn, and it isn't already thinking...
+        if not self.done and self.turn == self.ai_color and not self.ai_is_thinking:
+            self.start_ai_turn()
 
     def handle_events(self, events):
         for event in events:

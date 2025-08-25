@@ -105,6 +105,9 @@ class Board:
         return moves
         
     def _get_slides_for_piece(self, row, col):
+        piece = self.get_piece(row, col)
+        if piece == 0:
+            return [] # Return an empty list if there's no piece
         moves = {}
         piece = self.get_piece(row, col)
         if piece.color == WHITE or piece.king:
@@ -118,6 +121,9 @@ class Board:
         return moves
 
     def _get_jumps_for_piece(self, row, col):
+        piece = self.get_piece(row, col)
+        if piece == 0:
+            return [] # Return an empty list if there's no piece
         moves = {}
         piece = self.get_piece(row, col)
         if piece.color == WHITE or piece.king:
