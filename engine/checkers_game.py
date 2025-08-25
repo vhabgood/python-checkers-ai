@@ -184,11 +184,11 @@ class CheckersGame:
     
     def _update_valid_moves(self):
         """
-
-        Calculates all valid moves for the current turn and stores them.
-        If no moves are found, it ends the game.
+        Calculates all valid moves for the current turn using the new authoritative method.
         """
-        self.valid_moves = self.board.get_all_valid_moves_for_color(self.turn)
+        # FIX: Changed to call the new, correct function name
+        self.valid_moves = self.board.get_all_valid_moves(self.turn)
+        
         if not self.valid_moves and not self.done:
             self.done = True
             winner = RED if self.turn == WHITE else WHITE
@@ -226,6 +226,11 @@ class CheckersGame:
         It correctly identifies jumps, removes captured pieces, moves the
         player's piece, and changes the turn.
         """
+        # --- DEBUGGING TEXT ---
+        # This confirms what move is about to be physically applied to the board.
+        logger.debug(f"APPLY MOVE: Executing path: {path}")
+        # --- END DEBUGGING TEXT ---
+        
         if not path or len(path) < 2:
             logger.warning("Attempted to apply an invalid move sequence.")
             return
@@ -386,6 +391,10 @@ class CheckersGame:
         try:
             best_move_path = self.ai_move_queue.get_nowait()
             # Case 1: AI returned a valid move
+            # --- DEBUGGING TEXT ---
+            # This confirms what move was retrieved from the AI's thread.
+            logger.debug(f"GAME UPDATE: Move received from queue: {best_move_path}")
+            # --- END DEBUGGING TEXT ---
             if best_move_path and isinstance(best_move_path, list):
                 self._apply_move_sequence(best_move_path)
             # Case 2: AI returned an empty list, meaning it has no moves and loses

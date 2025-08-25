@@ -178,106 +178,71 @@ class Board:
                     moves[(end_row, end_col)] = [mid_square] # List contains the captured piece
                     
         return moves
-        
-        # ADD THIS ENTIRE BLOCK OF NEW FUNCTIONS TO board.py
+   
+# --- New, Final Move Generation Logic ---
 
-    def get_valid_moves(self, piece):
+    def get_all_valid_moves(self, color):
         """
-        Gathers all valid moves for a single piece, correctly enforcing
-        the mandatory jump rule.
+        The single authoritative function to get all valid moves for a color.
+        It correctly enforces the mandatory jump rule for the entire team.
         """
         moves = {}
-        
-        # Check for jumps first. If any jumps are available, they are the only legal moves.
-        jumps = self._find_jumps(piece.row, piece.col)
-        if jumps:
-            return jumps
-
-        # If no jumps were found, check for slides.
-        slides = self._find_slides(piece.row, piece.col)
-        moves.update(slides)
-            
-        return moves
-    
-    def get_all_valid_moves_for_color(self, color):
-        """
-        Aggregates all valid moves for all pieces of a given color,
-        enforcing the mandatory jump rule for the entire team.
-        """
-        all_moves = {}
-        
-        # Check for jumps on every piece first, as they are mandatory
         has_jumps = False
+
+        # First, check if any piece has a jump available.
         for piece in self.get_all_pieces(color):
-            jumps = self._find_jumps(piece.row, piece.col)
+            jumps = self._get_moves_for_piece(piece, find_jumps=True)
             if jumps:
                 has_jumps = True
-                all_moves[(piece.row, piece.col)] = jumps
+                moves[(piece.row, piece.col)] = jumps
         
+        # If any jump was found, only jumps are legal moves.
         if has_jumps:
-            return all_moves
+            return moves
 
-        # If no jumps were found for the whole team, find all slides
+        # If no jumps were found for any piece, then find all slides.
         for piece in self.get_all_pieces(color):
-            slides = self._find_slides(piece.row, piece.col)
+            slides = self._get_moves_for_piece(piece, find_jumps=False)
             if slides:
-                all_moves[(piece.row, piece.col)] = slides
-                
-        return all_moves
-
-    def _find_jumps(self, row, col):
-        """
-        Finds all valid jump moves for a single piece.
-        Returns a dictionary mapping {destination_pos: [jumped_piece]}
-        """
-        piece = self.get_piece(row, col)
-        if piece == 0: return {}
-
-        moves = {}
-        directions = []
-        if piece.color == RED or piece.king:
-            directions.extend([(1, -1), (1, 1)])
-        if piece.color == WHITE or piece.king:
-            directions.extend([(-1, -1), (-1, 1)])
-            
-        for dr, dc in directions:
-            mid_row, mid_col = row + dr, col + dc
-            end_row, end_col = row + 2 * dr, col + 2 * dc
-
-            if not (0 <= end_row < ROWS and 0 <= end_col < COLS):
-                continue
-                
-            mid_piece = self.get_piece(mid_row, mid_col)
-            end_square = self.get_piece(end_row, end_col)
-            
-            if mid_piece != 0 and mid_piece.color != piece.color and end_square == 0:
-                moves[(end_row, end_col)] = [mid_piece]
+                moves[(piece.row, piece.col)] = slides
                 
         return moves
-        
-    def _find_slides(self, row, col):
-        """
-        Finds all valid slide moves for a single piece.
-        Returns a dictionary mapping {destination_pos: []}
-        """
-        piece = self.get_piece(row, col)
-        if piece == 0: return {}
 
+    def _get_moves_for_piece(self, piece, find_jumps):
+        """
+        The core helper function to find all moves (jumps or slides) for one piece.
+        """
         moves = {}
+        step = 2 if find_jumps else 1
+        
         directions = []
         if piece.color == RED or piece.king:
-            directions.extend([(1, -1), (1, 1)])
+            directions.extend([(1, -1), (1, 1)])  # Down-left, Down-right
         if piece.color == WHITE or piece.king:
-            directions.extend([(-1, -1), (-1, 1)])
+            directions.extend([(-1, -1), (-1, 1)])  # Up-left, Up-right
             
         for dr, dc in directions:
-            end_row, end_col = row + dr, col + dc
-
+            end_row, end_col = piece.row + dr * step, piece.col + dc * step
+            
             if not (0 <= end_row < ROWS and 0 <= end_col < COLS):
                 continue
 
             dest_square = self.get_piece(end_row, end_col)
-            if dest_square == 0:
-                moves[(end_row, end_col)] = []
-                
+
+            if find_jumps:
+                mid_row, mid_col = piece.row + dr, piece.col + dc
+                mid_square = self.get_piece(mid_row, mid_col)
+                if dest_square == 0 and mid_square != 0 and mid_square.color != piece.color:
+                    moves[(end_row, end_col)] = [mid_square]
+            else: # Find slides
+                if dest_square == 0:
+                    moves[(end_row, end_col)] = [] # Empty list for no capture
+                    
         return moves
+
+    
+
+
+
+        
+ 
