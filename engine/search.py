@@ -4,10 +4,10 @@ import copy
 import logging # <--- Add this import
 
 logger = logging.getLogger('board') # <--- Add this line
+
 def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
     """
-    The top-level AI function. It initiates the minimax search for each possible
-    first move and returns the best move path found, along with other top moves for analysis.
+    The top-level AI function. It now correctly assembles the move path.
     """
     is_maximizing = ai_color == WHITE
     
@@ -19,26 +19,27 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
 
     all_scored_moves = []
     for move_path, move_board in possible_moves:
-        # The main recursive call to evaluate the outcome of this move
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
-        full_path = move_path + subsequent_path
+        
+        # CRITICAL FIX: The full path is just the initial move.
+        # We no longer add the opponent's predicted response.
+        full_path = move_path
         all_scored_moves.append((score, full_path))
     
-    # Sort moves from best to worst based on the final evaluation score
     all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
     
     best_path = all_scored_moves[0][1]
     top_5_paths = all_scored_moves[:5]
-        # --- DEBUGGING TEXT ---
-    # This tells us the exact path the AI decided was the best.
+
     logger.debug(f"AI SEARCH: Best path chosen: {best_path}")
-    # --- END DEBUGGING TEXT ---
+
     return best_path, top_5_paths
+
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The core recursive search algorithm. It explores the game tree to a specified
-    depth, using alpha-beta pruning to cut off branches that are not promising.
+    The core recursive search algorithm. It now correctly returns only the
+    immediate best move in the current simulation.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
@@ -50,7 +51,7 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
-                # CRITICAL FIX: Only store the immediate path, not the entire future sequence.
+                # CRITICAL FIX: The best path is just this move, not the future ones.
                 best_path = path
             alpha = max(alpha, evaluation)
             if beta <= alpha:
@@ -62,7 +63,7 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
-                # CRITICAL FIX: Only store the immediate path, not the entire future sequence.
+                # CRITICAL FIX: The best path is just this move, not the future ones.
                 best_path = path
             beta = min(beta, evaluation)
             if beta <= alpha:
@@ -94,7 +95,7 @@ def get_all_moves(board, color):
 def _get_jump_sequences(board, path):
     """
     A recursive generator that explores multi-jump paths, now correctly using
-    the board's new move logic.
+    the board's new, unified move logic.
     """
     current_pos = path[-1]
     
@@ -103,10 +104,10 @@ def _get_jump_sequences(board, path):
         yield path, board
         return
 
-    # Use the new method to find ONLY jumps from the current position
+    # FIX: Use the new, correct helper function to find only jumps.
     more_jumps = board._get_moves_for_piece(piece, find_jumps=True)
 
-    # Base case: no more jumps are available.
+    # Base case: if there are no more jumps, the sequence is complete.
     if not more_jumps:
         board.turn = RED if board.turn == WHITE else WHITE
         yield path, board

@@ -113,7 +113,7 @@ class Board:
         elif self.white_left <= 0:
             return RED
         
-        if not self.get_all_valid_moves_for_color(self.turn):
+        if not self.get_all_valid_moves(self.turn):
             return WHITE if self.turn == RED else RED
         
         return None
