@@ -1,7 +1,7 @@
 # engine/piece.py
 import pygame
 import math
-from .constants import SQUARE_SIZE, CROWN, GREY, YELLOW
+from .constants import SQUARE_SIZE, GREY, YELLOW
 
 class Piece:
     """

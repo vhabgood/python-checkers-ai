@@ -64,18 +64,21 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
 
 def get_all_moves(board, color):
     """
-    A generator function that yields all possible next board states for a given color.
-    It simulates both simple slides and complex multi-jump sequences.
+    A generator that yields all possible next board states for a given color.
+    This version corrects a critical bug by ensuring every move is simulated
+    on a unique copy of the board.
     """
     # The move data is a dictionary: { start_pos: { end_pos: [captured], ... } }
     for start_pos, end_positions in board.get_all_valid_moves_for_color(color).items():
+        # The inner loop iterates through each possible destination for the piece
         for end_pos, captured_pieces in end_positions.items():
+            # CRITICAL FIX: Create a fresh deepcopy for EVERY potential move.
             temp_board = copy.deepcopy(board)
             piece = temp_board.get_piece(start_pos[0], start_pos[1])
             
             if piece == 0: continue
 
-            # If it's a jump, explore further multi-jumps recursively
+            # If the move involves a capture, explore further multi-jumps recursively
             if captured_pieces:
                 temp_board.move(piece, end_pos[0], end_pos[1])
                 temp_board._remove(captured_pieces)
@@ -87,13 +90,23 @@ def get_all_moves(board, color):
 
 def _get_jump_sequences(board, path):
     """
-    A recursive generator that explores multi-jump paths. This is essential
-    for the AI to correctly evaluate complex capture sequences.
+    A recursive generator that explores multi-jump paths, now correctly using
+    the board's new `get_valid_moves` method.
     """
     current_pos = path[-1]
-    more_jumps = board._get_jumps_for_piece(current_pos[0], current_pos[1])
+    
+    # Get the piece at the end of the current path
+    piece = board.get_piece(current_pos[0], current_pos[1])
+    if piece == 0: # Safety check in case the piece is gone
+        yield path, board
+        return
 
-    # Base case: no more jumps are available from the current position.
+    # Use the new, correct method to get all moves for this piece
+    all_possible_moves = board.get_valid_moves(piece)
+    # A jump is a move where the 'captured' list is not empty. Filter for those.
+    more_jumps = {dest: captured for dest, captured in all_possible_moves.items() if captured}
+
+    # Base case: if there are no more jumps, the sequence is complete.
     if not more_jumps:
         board.turn = RED if board.turn == WHITE else WHITE
         yield path, board
@@ -106,7 +119,6 @@ def _get_jump_sequences(board, path):
 
         if temp_piece != 0:
             temp_board.move(temp_piece, next_pos[0], next_pos[1])
-            # This is the critical step: remove the captured piece in the simulation.
             temp_board._remove(jumped_pieces)
             
             new_path = path + [next_pos]
