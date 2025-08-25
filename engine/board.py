@@ -89,18 +89,19 @@ class Board:
                 else:
                     pygame.draw.rect(screen, (227, 206, 187), (draw_col * SQUARE_SIZE, draw_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
+# THIS IS THE CORRECTED FUNCTION
     def get_all_valid_moves_for_color(self, color):
+        """
+        Gathers all valid moves for a given color and returns them in a dictionary.
+        The format is { (start_row, start_col): [(end_row, end_col), ...], ... }
+        which is what the AI's search function expects.
+        """
         moves = {}
-        for piece in self.get_all_pieces(color):
-            jumps = self._get_jumps_for_piece(piece.row, piece.col)
-            if jumps:
-                moves[(piece.row, piece.col)] = list(jumps.keys())
-        if moves:
-            return moves
-        for piece in self.get_all_pieces(color):
-            slides = self._get_slides_for_piece(piece.row, piece.col)
-            if slides:
-                moves[(piece.row, piece.col)] = list(slides.keys())
+        pieces = self.get_all_pieces(color)
+        for piece in pieces:
+            valid_moves_for_piece = self._get_valid_moves_for_piece(piece)
+            if valid_moves_for_piece:
+                moves[(piece.row, piece.col)] = valid_moves_for_piece
         return moves
         
     def _get_slides_for_piece(self, row, col):
@@ -134,3 +135,17 @@ class Board:
                     if end_piece == 0 and mid_piece != 0 and mid_piece.color != piece.color:
                         moves[(r_end, c_end)] = [mid_piece]
         return moves
+        
+        # ADD THIS NEW FUNCTION TO YOUR BOARD CLASS
+    def _get_valid_moves_for_piece(self, piece):
+        """
+        Returns all valid moves for a single piece, enforcing mandatory jumps.
+        """
+        jumps = self._get_jumps_for_piece(piece.row, piece.col)
+        # If any jumps are available, they are the only valid moves
+        if jumps:
+            return jumps
+        
+        # If no jumps are available, then get the simple slide moves
+        slides = self._get_slides_for_piece(piece.row, piece.col)
+        return slides
