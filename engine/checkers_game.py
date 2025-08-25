@@ -15,6 +15,10 @@ from engine.evaluation import evaluate_board
 logger = logging.getLogger('gui')
 
 class CheckersGame:
+    """
+    The main game state manager. It handles the game loop, player input,
+    AI turn management via threading, and drawing everything to the screen.
+    """
     def __init__(self, screen, player_color_str):
         self.screen = screen
         self.board = Board()
@@ -30,11 +34,13 @@ class CheckersGame:
         self.board_flipped = False
         self.history = []
         self.move_history = []
+        # Font setup
         self.large_font = pygame.font.SysFont(None, 22) 
         self.font = pygame.font.SysFont(None, 24)
         self.small_font = pygame.font.SysFont(None, 18)
         self.dev_font = pygame.font.SysFont('monospace', 16)
         self.number_font = pygame.font.SysFont(None, 18)
+        # AI threading and communication setup
         self.ai_move_queue = queue.Queue()
         self.ai_analysis_queue = queue.Queue()
         self.ai_thread = None
@@ -42,10 +48,15 @@ class CheckersGame:
         self.positional_score = 0.0
         self.ai_top_moves = []
         self.ai_depth = DEFAULT_AI_DEPTH
+        # Initialize UI elements
         self._create_buttons()
+        # Calculate the first set of valid moves
         self._update_valid_moves()
+    
+    # --- Button Callbacks and UI Toggles ---
 
     def _create_buttons(self):
+        """Initializes all the buttons for the side panel."""
         self.buttons = []
         panel_x = BOARD_SIZE + 10
         button_width = self.screen.get_width() - BOARD_SIZE - 20
@@ -70,7 +81,30 @@ class CheckersGame:
             if "Board Nums" in btn.text: self.board_nums_button = btn
             elif "Dev Mode" in btn.text: self.dev_mode_button = btn
 
+    def toggle_board_numbers(self):
+        """Toggles the visibility of the board square numbers."""
+        self.show_board_numbers = not self.show_board_numbers
+        self.board_nums_button.text = f"Board Nums: {'ON' if self.show_board_numbers else 'OFF'}"
+        
+    def toggle_dev_mode(self):
+        """Toggles the visibility of the developer/AI analysis panel."""
+        self.dev_mode = not self.dev_mode
+        self.dev_mode_button.text = f"Dev Mode: {'ON' if self.dev_mode else 'OFF'}"
+        
+    def increase_ai_depth(self):
+        """Increases the AI search depth."""
+        if self.ai_depth < 9: self.ai_depth += 1
+        logger.info(f"AI depth set to {self.ai_depth}")
+        
+    def decrease_ai_depth(self):
+        """Decreases the AI search depth."""
+        if self.ai_depth > 5: self.ai_depth -= 1
+        logger.info(f"AI depth set to {self.ai_depth}")
+    
+    # --- Core Game State Management ---
+
     def reset_game(self):
+        """Resets the board and game state to the beginning."""
         self.board = Board()
         self.turn = self.board.turn
         self.done = False
@@ -80,6 +114,7 @@ class CheckersGame:
         self._update_valid_moves()
 
     def undo_move(self):
+        """Reverts the game state to the previous turn using the history."""
         if not self.history: return
         self.board = self.history.pop()
         if self.move_history: self.move_history.pop()
@@ -88,121 +123,182 @@ class CheckersGame:
         self._update_valid_moves()
 
     def flip_board(self):
+        """Flips the board's orientation."""
         self.board_flipped = not self.board_flipped
         
-    def toggle_board_numbers(self):
-        self.show_board_numbers = not self.show_board_numbers
-        self.board_nums_button.text = f"Board Nums: {'ON' if self.show_board_numbers else 'OFF'}"
-        
-    def toggle_dev_mode(self):
-        self.dev_mode = not self.dev_mode
-        self.dev_mode_button.text = f"Dev Mode: {'ON' if self.dev_mode else 'OFF'}"
-        
-    def increase_ai_depth(self):
-        if self.ai_depth < 9: self.ai_depth += 1
-        logger.info(f"AI depth set to {self.ai_depth}")
-        
-    def decrease_ai_depth(self):
-        if self.ai_depth > 5: self.ai_depth -= 1
-        logger.info(f"AI depth set to {self.ai_depth}")
-        
     def export_to_pdn(self):
+        """Placeholder for exporting the game to Portable Draughts Notation."""
         logger.info("Export to PDN button clicked (not implemented).")
 
     def force_ai_move(self):
-        if self.turn == self.ai_color:
-            self.start_ai_turn()
+        """
+        Allows the player to have the AI make a move for them on their turn.
+        Does nothing if it's already the AI's turn or the AI is thinking.
+        """
+        if self.turn == self.player_color and not self.ai_is_thinking:
+            logger.info(f"Player forcing AI to calculate move for {constants.PLAYER_NAMES[self.player_color]}")
+            self.start_ai_turn(force_color=self.player_color)
+    
+    # --- AI Turn Management ---
 
-    def start_ai_turn(self):
+    def start_ai_turn(self, force_color=None):
+        """
+        Initiates the AI's turn by starting a new thread for the calculation.
+        This keeps the GUI from freezing while the AI is thinking.
+        """
         if self.ai_thread and self.ai_thread.is_alive(): return
+        
         self.ai_is_thinking = True
         self.ai_top_moves = []
+        color_to_move = force_color if force_color else self.ai_color
+        
         logger.info(f"Starting AI calculation with depth {self.ai_depth}...")
-        self.ai_thread = threading.Thread(target=self.run_ai_calculation, daemon=True)
+        # Run the calculation in a separate thread
+        self.ai_thread = threading.Thread(target=self.run_ai_calculation, args=(color_to_move,), daemon=True)
         self.ai_thread.start()
 
-    def run_ai_calculation(self):
-        # This function runs in a separate thread to keep the game responsive.
+    def run_ai_calculation(self, color_to_move):
+        """
+        This function is executed in a separate thread. It calls the search
+        algorithm and puts the result (the best move path) onto a queue
+        for the main game loop to retrieve.
+        """
         try:
-            # FIX: We now check the data type from the board to prevent crashes.
-            # The AI search expects a dictionary, but was receiving a list.
-            # This check will log a specific error if the board returns the wrong type.
-            moves = self.board.get_all_valid_moves_for_color(self.ai_color)
-            if not isinstance(moves, dict):
-                logger.error(f"AI ABORTED: board.get_all_valid_moves_for_color() returned a {type(moves)}, but AI expects a dict.")
-                self.ai_move_queue.put(None)
-                return
-
-            best_move_path, top_moves = get_ai_move_analysis(self.board, self.ai_depth, self.ai_color, evaluate_board)
-
+            best_move_path, top_moves = get_ai_move_analysis(self.board, self.ai_depth, color_to_move, evaluate_board)
+            
             if best_move_path:
                 self.positional_score = top_moves[0][0]
                 self.ai_top_moves = top_moves
                 self.ai_move_queue.put(best_move_path)
             else:
-                # If AI returns an empty path (no moves), put None on the queue.
-                self.ai_move_queue.put(None)
+                self.ai_move_queue.put([]) # Put an empty list if no moves are found
         except Exception as e:
             logger.error(f"AI calculation failed: {e}")
-            self.ai_move_queue.put(None)
+            self.ai_move_queue.put(None) # Put None to signal an error
         finally:
             self.ai_is_thinking = False
-            # This log message was moved to appear only when a valid score is found.
             if self.ai_top_moves:
-                 logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
+                logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
 
+    # --- Player Turn and Move Logic ---
+    
     def _update_valid_moves(self):
+        """
+
+        Calculates all valid moves for the current turn and stores them.
+        If no moves are found, it ends the game.
+        """
         self.valid_moves = self.board.get_all_valid_moves_for_color(self.turn)
-        if not self.valid_moves:
+        if not self.valid_moves and not self.done:
             self.done = True
             winner = RED if self.turn == WHITE else WHITE
-            logger.info(f"Game over! {constants.PLAYER_NAMES[winner]} wins.")
+            logger.info(f"Game over! {constants.PLAYER_NAMES[winner]} wins as opponent has no moves.")
 
     def _change_turn(self):
+        """Swaps the turn to the other player."""
         self.selected_piece = None
         self.turn = RED if self.turn == WHITE else WHITE
         self.board.turn = self.turn
         self._update_valid_moves()
 
     def _select(self, row, col):
+        """
+        Handles the logic for selecting a piece or selecting a destination square
+        for a selected piece.
+        """
+        # If a piece is already selected, check if the click is a valid move destination
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
             if start_pos in self.valid_moves and (row, col) in self.valid_moves[start_pos]:
+                # This move is a simple slide, as jumps are handled by their full path
                 self._apply_move_sequence([start_pos, (row, col)])
-            else:
+            else: # Invalid move, so deselect the piece
                 self.selected_piece = None
+        # If no piece is selected, check if the click is on a piece that can move
         elif (row, col) in self.valid_moves:
             self.selected_piece = self.board.get_piece(row, col)
-        else:
+        else: # Click was not on a valid piece
             self.selected_piece = None
 
     def _apply_move_sequence(self, path):
-        # FIX: Added a check to ensure the path is valid before proceeding.
+        """
+        The master function for executing a move on the main game board.
+        It correctly identifies jumps, removes captured pieces, moves the
+        player's piece, and changes the turn.
+        """
         if not path or len(path) < 2:
-            logger.warning("AI tried to apply an invalid move sequence.")
-            self._change_turn()
+            logger.warning("Attempted to apply an invalid move sequence.")
             return
 
         self.history.append(copy.deepcopy(self.board))
         self.move_history.append(path)
+
+        start_pos = path[0]
+        end_pos = path[-1]
+        piece = self.board.get_piece(start_pos[0], start_pos[1])
+        
+        if piece == 0:
+            logger.error(f"Attempted to move a piece from an empty square at {start_pos}.")
+            return
+
+        # Identify all jumped pieces during the move sequence
+        jumped_pieces = []
         for i in range(len(path) - 1):
-            start_pos, end_pos = path[i], path[i+1]
-            piece = self.board.get_piece(start_pos[0], start_pos[1])
-            if piece != 0:
-                self.board.move(piece, end_pos[0], end_pos[1])
-                self.draw()
-                pygame.display.flip()
-                time.sleep(0.2)
+            pos1 = path[i]
+            pos2 = path[i+1]
+            if abs(pos1[0] - pos2[0]) == 2: # A jump is a move of 2 rows
+                jumped_row = (pos1[0] + pos2[0]) // 2
+                jumped_col = (pos1[1] + pos2[1]) // 2
+                jumped_piece = self.board.get_piece(jumped_row, jumped_col)
+                if jumped_piece != 0:
+                    jumped_pieces.append(jumped_piece)
+
+        # Remove all jumped pieces from the board
+        if jumped_pieces:
+            self.board._remove(jumped_pieces)
+
+        # Move the primary piece to its final destination
+        self.board.move(piece, end_pos[0], end_pos[1])
+        
+        # Animate the move on the screen
+        self.draw()
+        pygame.display.flip()
+        time.sleep(0.2)
+
         self._change_turn()
 
     def _handle_click(self, pos):
+        """Handles a mouse click on the game board."""
+        # Ignore clicks if it's not the player's turn or the game is over
         if self.turn != self.player_color or self.done: return
+        # Check if the click was within the board area
         if pos[0] < BOARD_SIZE:
+            # Convert pixel coordinates to board row/col
             row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
             if self.board_flipped: row, col = ROWS - 1 - row, COLS - 1 - col
             self._select(row, col)
+    
+    # --- Drawing and Main Loop ---
+
+    def _format_move_path(self, path):
+        """
+        Formats a move path (list of coordinates) into a readable string
+        using standard algebraic notation. Uses '-' for slides and 'x' for jumps.
+        """
+        if not path:
+            return ""
+
+        move_acfs = [str(constants.COORD_TO_ACF.get(pos, '?')) for pos in path]
+
+        if len(path) == 2:
+            return f"{move_acfs[0]}-{move_acfs[1]}"
+        elif len(path) > 2:
+            return "x".join(move_acfs)
+        
+        return move_acfs[0] if move_acfs else ""
 
     def draw_move_history(self, start_y):
+        """Draws the formatted move history panel."""
         panel_x = BOARD_SIZE + 10
         y_offset = start_y
         history_font = pygame.font.SysFont('monospace', 14)
@@ -212,22 +308,26 @@ class CheckersGame:
         header = history_font.render("Red     White", True, WHITE)
         self.screen.blit(header, (panel_x, y_offset))
         y_offset += 20
+        # Only show the last 10 moves
         start_index = max(0, len(self.move_history) - 10)
         if start_index % 2 != 0: start_index -=1
         for i in range(start_index, len(self.move_history), 2):
             move_num = (i // 2) + 1
             red_path = self.move_history[i]
-            red_move_str = "x".join(str(COORD_TO_ACF.get(pos, '?')) for pos in red_path)
+            red_move_str = self._format_move_path(red_path)
+            
             white_move_str = ""
             if i + 1 < len(self.move_history):
                 white_path = self.move_history[i+1]
-                white_move_str = "x".join(str(COORD_TO_ACF.get(pos, '?')) for pos in white_path)
+                white_move_str = self._format_move_path(white_path)
+            
             line = f"{move_num}. {red_move_str:<8} {white_move_str}"
             line_surf = history_font.render(line, True, WHITE)
             self.screen.blit(line_surf, (panel_x, y_offset))
             y_offset += 15
 
     def draw_info_panel(self):
+        """Draws the main side panel with turn info and buttons."""
         panel_x = BOARD_SIZE
         panel_width = self.screen.get_width() - BOARD_SIZE
         pygame.draw.rect(self.screen, constants.COLOR_BG, (panel_x, 0, panel_width, self.screen.get_height()))
@@ -244,6 +344,7 @@ class CheckersGame:
             button.draw(self.screen)
             
     def draw_dev_panel(self):
+        """Draws the AI analysis panel at the bottom of the screen."""
         if not self.dev_mode: return
         panel_y = BOARD_SIZE
         panel_height = self.screen.get_height() - BOARD_SIZE
@@ -252,59 +353,64 @@ class CheckersGame:
         self.screen.blit(title_surf, (10, panel_y + 5))
         y_offset = 30
         for i, (score, path) in enumerate(self.ai_top_moves):
-            move_str = "x".join(str(COORD_TO_ACF.get(pos, '?')) for pos in path)
+            move_str = self._format_move_path(path)
             line = f"{i+1}. {move_str:<25} Score: {score:.2f}"
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
             self.screen.blit(text_surf, (20, panel_y + y_offset))
             y_offset += 15
 
     def draw(self):
+        """The main draw call for the entire game screen."""
         self.board.draw(self.screen, self.number_font, self.show_board_numbers, self.board_flipped)
         self.draw_info_panel()
         self.draw_dev_panel()
+        # Highlight valid moves for the selected piece
         if self.selected_piece:
             start_pos = (self.selected_piece.row, self.selected_piece.col)
             if start_pos in self.valid_moves:
                 for move in self.valid_moves[start_pos]:
                     draw_row, draw_col = (ROWS - 1 - move[0], COLS - 1 - move[1]) if self.board_flipped else (move[0], move[1])
                     pygame.draw.circle(self.screen, (0, 255, 0), (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2), 15)
+        # Display the winner text when the game is over
         if self.done:
-            winner = RED if self.turn == WHITE else WHITE
+            winner = WHITE if self.turn == RED else RED
             end_text = self.large_font.render(f"{constants.PLAYER_NAMES[winner]} Wins!", True, (0, 255, 0), constants.COLOR_BG)
             text_rect = end_text.get_rect(center=(BOARD_SIZE / 2, self.screen.get_height() / 2))
             self.screen.blit(end_text, text_rect)
 
     def update(self):
+        """
+        The main logic loop for the game state. It handles retrieving AI moves
+        from the queue and automatically starting the AI's turn.
+        """
         try:
             best_move_path = self.ai_move_queue.get_nowait()
-
-            # Case 1: AI returned a valid move path (a non-empty list).
+            # Case 1: AI returned a valid move
             if best_move_path and isinstance(best_move_path, list):
                 self._apply_move_sequence(best_move_path)
-
-            # Case 2: AI returned an empty list []. This means it has no moves and loses.
+            # Case 2: AI returned an empty list, meaning it has no moves and loses
             elif isinstance(best_move_path, list) and not best_move_path:
                 logger.info(f"AI ({constants.PLAYER_NAMES[self.ai_color]}) has no valid moves. Player wins!")
-                self.done = True  # End the game
-
-            # Case 3: A fallback for when the AI fails and returns None.
+                self.done = True
+            # Case 3: AI returned None, indicating an error
             elif best_move_path is None:
                 logger.warning("AI calculation failed and returned None. Turn will be skipped.")
-
         except queue.Empty:
-            # This is normal, means the AI is still thinking or it's the player's turn.
+            # This is normal, means AI is thinking or it's the player's turn
             pass
 
-        # If the game isn't over, and it's the AI's turn, and it isn't already thinking...
+        # Automatically start the AI's turn if it's their turn and they are not already thinking
         if not self.done and self.turn == self.ai_color and not self.ai_is_thinking:
             self.start_ai_turn()
 
     def handle_events(self, events):
+        """Handles all user input events, like clicks and key presses."""
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
+                # Check if a button was clicked first
                 for button in self.buttons:
                     if button.is_clicked(event.pos):
                         button.callback()
                         break 
-                else: 
+                else: # If no button was clicked, handle it as a board click
                     self._handle_click(event.pos)
