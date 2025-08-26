@@ -70,7 +70,7 @@ class StateManager:
         except Exception as e:
             logger.error(f"Failed to load game assets in thread: {e}")
             self.game_instance = None # Signal that loading failed
-            
+
     def run(self):
         """The main application loop, now with simplified and correct thread handling."""
         clock = pygame.time.Clock()
@@ -102,7 +102,6 @@ class StateManager:
                         self.loading_thread.start()
                 else:
                     self.current_state = self.states[next_state_name]
-
             # --- Main Update and Draw Logic ---
             # This simplified logic works for all states now.
             # The loading screen will update its message from its queue.

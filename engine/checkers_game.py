@@ -37,14 +37,19 @@ class CheckersGame:
         self.board_flipped = False
         self.history = []
         self.move_history = []
-        # Font setup
-        self.large_font = pygame.font.SysFont(None, 22) 
-        self.font = pygame.font.SysFont(None, 20) #was 24
+        self.large_font = pygame.font.SysFont(None, 22)
+        self.font = pygame.font.SysFont(None, 20)
         self.small_font = pygame.font.SysFont(None, 18)
-        self.dev_font = pygame.font.SysFont('monospace', 12) #was 16
+        self.dev_font = pygame.font.SysFont('monospace', 12)
         self.number_font = pygame.font.SysFont(None, 18)
-        
-         
+        self.ai_move_queue = queue.Queue()
+        self.ai_analysis_queue = queue.Queue()
+        self.ai_thread = None
+        self.ai_is_thinking = False
+        self.positional_score = 0.0
+        self.ai_top_moves = []
+        self.ai_depth = DEFAULT_AI_DEPTH
+
         # --- THREADING FIX ---
         # The game now sends status messages to the loading screen's queue
         # instead of trying to update the display directly from this thread.
@@ -60,20 +65,6 @@ class CheckersGame:
         # --- END FIX ---
         
         self._create_buttons()
-        self._update_valid_moves()
-        # --- END DATABASE INTEGRATION ---
-        
-        # AI threading and communication setup
-        self.ai_move_queue = queue.Queue()
-        self.ai_analysis_queue = queue.Queue()
-        self.ai_thread = None
-        self.ai_is_thinking = False
-        self.positional_score = 0.0
-        self.ai_top_moves = []
-        self.ai_depth = DEFAULT_AI_DEPTH
-        # Initialize UI elements
-        self._create_buttons()
-        # Calculate the first set of valid moves
         self._update_valid_moves()
     
     # --- Button Callbacks and UI Toggles ---

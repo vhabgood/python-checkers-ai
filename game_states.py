@@ -62,7 +62,6 @@ class LoadingScreen:
         # --- END FIX ---
 
     def handle_events(self, events):
-        # The loading screen doesn't handle any events
         pass
 
     def update(self):
