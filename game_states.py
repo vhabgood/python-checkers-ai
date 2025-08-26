@@ -1,7 +1,6 @@
 # game_states.py
 import pygame
 import logging
-import time
 import queue
 from engine.constants import (
     COLOR_BG, COLOR_BUTTON, COLOR_BUTTON_HOVER, COLOR_TEXT,
@@ -17,7 +16,7 @@ class Button:
         self.size = size
         self.callback = callback
         self.rect = pygame.Rect(pos, size)
-        self.font = pygame.font.SysFont(None, 18) 
+        self.font = pygame.font.SysFont(None, 24) 
         self.hovered = False
 
     def draw(self, screen):
@@ -37,7 +36,9 @@ class BaseState:
         self.screen = screen
         self.done = False
         self.next_state = None
-        self.font = pygame.font.SysFont('Arial', 24)
+        self.font = pygame.font.SysFont('Arial', 36)
+        self.small_font = pygame.font.SysFont('Arial', 24)
+
 
     def handle_events(self, events):
         raise NotImplementedError
@@ -46,98 +47,41 @@ class BaseState:
     def draw(self):
         raise NotImplementedError
 
-# Add this entire class to game_states.py
-# It can go right before the PlayerSelectionScreen class
-
-class LoadingScreen(State):
+class LoadingScreen(BaseState):
     """
-    A state to display a loading message while game assets, especially
-    large database files, are loaded in a separate thread.
+    A state to display a loading message while game assets are loaded in a
+    separate thread. It listens for messages on a queue to update its status.
     """
-    def __init__(self):
-        super().__init__()
-        self.next_state = "PLAYER_SELECTION"
-        self.font = pygame.font.Font(None, 74)
-        self.text = self.font.render("Loading Databases...", True, pygame.Color("white"))
-        self.text_rect = self.text.get_rect(center=self.screen_rect.center)
-        self.databases = {}
-        self.loading_thread_started = False
+    def __init__(self, screen, status_queue):
+        super().__init__(screen)
+        self.status_queue = status_queue
+        self.status_message = "Initializing..."
+        self.next_state = "game" # This is where we'll go when loading is done
 
-    def load_action(self):
-        """The function that will run in the background thread."""
-        logger.info("Background database loading started.")
-        db_path = Path("resources")
-        files = list(db_path.glob("*.pkl"))
-        for i, file in enumerate(files):
-            # We skip game_resources.pkl as it's not a database
-            if file.stem == "game_resources":
-                continue
-            try:
-                with open(file, "rb") as f:
-                    self.databases[file.stem] = pickle.load(f)
-                logger.info(f"Loaded database ({i+1}/{len(files)}): {file.name}")
-            except Exception as e:
-                logger.error(f"Failed to load {file.name}: {e}")
-        logger.info("Background database loading finished.")
-        # When done, this dictionary will be passed to the next state.
-        self.persist["databases"] = self.databases
-        self.done = True # Signal to the state machine we are done
-
-    def startup(self, persistent):
-        """Called once when the state begins."""
-        self.persist = persistent
-        # Start the thread only once.
-        if not self.loading_thread_started:
-            threading.Thread(target=self.load_action).start()
-            self.loading_thread_started = True
-
-    def update(self, dt):
-        """Update is called every frame, but our work is in the thread."""
-        pass # No need to do anything here until the thread sets self.done
-
-    def draw(self, surface):
-        """Draws the 'Loading...' text."""
-        surface.fill(pygame.Color("black"))
-        surface.blit(self.text, self.text_rect)
     def reset(self):
         """Resets the loading screen to its initial state for a new loading sequence."""
         self.done = False
         self.status_message = "Loading Databases..."
-        # Use hasattr to safely initialize start_time
-        if not hasattr(self, 'start_time'):
-            self.start_time = pygame.time.get_ticks()
-        else:
-            self.start_time = pygame.time.get_ticks()
-#
-# --- CHANGE END ---
-#
-
-#
-# --- CHANGE START ---
-#
-    def update(self):
-        """Checks the queue for new status messages from the loading thread."""
-        try:
-            # Check for a new message without blocking
-            self.status_message = self.status_queue.get_nowait()
-            # If we receive the final message, mark the screen as done
-            if self.status_message == "Load Complete!":
-                self.done = True
-                self.next_state = "game" # Set the next state to transition to
-        except queue.Empty:
-            pass
-#
-# --- CHANGE END ---
-#
+        # Clear any old messages from the queue
+        while not self.status_queue.empty():
+            try:
+                self.status_queue.get_nowait()
+            except queue.Empty:
+                break
 
     def handle_events(self, events):
+        # The loading screen doesn't need to handle any events
         pass
 
     def update(self):
         """Checks the queue for new status messages from the loading thread."""
         try:
             # Check for a new message without blocking
-            self.status_message = self.status_queue.get_nowait()
+            message = self.status_queue.get_nowait()
+            if message == "DONE":
+                self.done = True # Signal to the StateManager that we are done
+            else:
+                self.status_message = message
         except queue.Empty:
             pass # It's normal for the queue to be empty most of the time
 
@@ -153,60 +97,35 @@ class LoadingScreen(State):
         self.screen.blit(title_surf, title_rect)
         self.screen.blit(status_surf, status_rect)
 
-#
-# --- CHANGE START ---
-#
-    def reset(self):
-        """Resets the loading screen to its initial state for a new loading sequence."""
-        self.done = False
-        self.status_message = "Loading Databases..."
-        if not hasattr(self, 'start_time'):
-            self.start_time = pygame.time.get_ticks()
-        else:
-            self.start_time = pygame.time.get_ticks()
-#
-# --- CHANGE END ---
-#
-        
 class PlayerSelectionScreen(BaseState):
     def __init__(self, screen):
         super().__init__(screen)
-        self.next_state = "game"
+        # This state will transition to the loading screen
+        self.next_state = "loading" 
         self.player_choice = None
         self.buttons = [
-            {'text': 'Red', 'rect': pygame.Rect(100, 200, 100, 50), 'player': RED},
-            {'text': 'White', 'rect': pygame.Rect(400, 200, 100, 50), 'player': WHITE}
+            Button('Play as Red', (WIDTH/2 - 100, 200), (200, 50), lambda: self.select_player(RED)),
+            Button('Play as White', (WIDTH/2 - 100, 270), (200, 50), lambda: self.select_player(WHITE))
         ]
         logger.info("PlayerSelectionScreen initialized.")
+
+    def select_player(self, color):
+        """Callback function for the buttons."""
+        player_color_name = PLAYER_NAMES.get(color)
+        self.player_choice = player_color_name.lower()
+        self.done = True
+        logger.info(f"Player selected {player_color_name}.")
 
     def handle_events(self, events):
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mouse_pos = pygame.mouse.get_pos()
                 for button in self.buttons:
-                    if button['rect'].collidepoint(mouse_pos):
-                        player_color_name = PLAYER_NAMES.get(button['player'])
-                        self.player_choice = player_color_name.lower()
-                        self.done = True
-                        logger.info(f"Player selected {player_color_name}.")
+                    if button.is_clicked(event.pos):
+                        button.callback()
 
-#
-# --- CHANGE START ---
-#
     def update(self):
-        """Checks the queue for new status messages from the loading thread."""
-        try:
-            message = self.status_queue.get_nowait()
-            if message == "DONE":
-                self.done = True
-                self.next_state = "game" # This tells the StateManager to switch
-            else:
-                self.status_message = message
-        except queue.Empty:
-            pass
-#
-# --- CHANGE END ---
-#
+        # This state doesn't have any continuous logic to update
+        pass
 
     def draw(self):
         self.screen.fill(COLOR_BG)
@@ -214,7 +133,5 @@ class PlayerSelectionScreen(BaseState):
         title_rect = title_text.get_rect(center=(self.screen.get_width() / 2, 100))
         self.screen.blit(title_text, title_rect)
         for button in self.buttons:
-            pygame.draw.rect(self.screen, COLOR_BUTTON, button['rect'])
-            text_surf = self.font.render(button['text'], True, COLOR_TEXT)
-            text_rect = text_surf.get_rect(center=button['rect'].center)
-            self.screen.blit(text_surf, text_rect)
+            button.draw(self.screen)
+
