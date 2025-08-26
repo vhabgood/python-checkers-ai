@@ -4,7 +4,7 @@ import logging
 import time
 from engine.constants import (
     COLOR_BG, COLOR_BUTTON, COLOR_BUTTON_HOVER, COLOR_TEXT,
-    RED, WHITE, PLAYER_NAMES
+    RED, WHITE, PLAYER_NAMES, WIDTH, HEIGHT
 )
 
 logger = logging.getLogger('gui')
@@ -45,32 +45,44 @@ class BaseState:
     def draw(self):
         raise NotImplementedError
 
-class LoadingScreen(BaseState):
+class LoadingScreen:
+    """A screen that shows a loading message and progress."""
     def __init__(self, screen):
-        super().__init__(screen)
+        self.screen = screen
+        self.done = False
         self.next_state = "player_selection"
-        self.loading_status = ["Loading databases...", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"]
-        self.current_status_index = 0
-        self.last_update_time = time.time()
-        logger.info("LoadingScreen initialized.")
+        self.font = pygame.font.SysFont(None, 48)
+        self.small_font = pygame.font.SysFont(None, 24)
+        self.status_message = "Loading..." # Default message
+
+    def set_status(self, message):
+        """Allows other parts of the program to update the loading message."""
+        self.status_message = message
+        # We redraw the screen immediately to show the new status
+        self.draw()
+        pygame.display.flip()
 
     def handle_events(self, events):
+        # The loading screen doesn't handle any events
         pass
 
     def update(self):
-        current_time = time.time()
-        if current_time - self.last_update_time > 0.5:
-            self.current_status_index += 1
-            if self.current_status_index >= len(self.loading_status):
-                self.done = True
-                logger.info("Loading complete. Transitioning to player selection.")
-            self.last_update_time = current_time
+        # In a real game, you might check asset loading progress here.
+        # For now, we'll just show it for a fixed time.
+        pygame.time.wait(2000) # Show the screen for 2 seconds
+        self.done = True
 
     def draw(self):
+        """Draws the loading text and the current status message."""
         self.screen.fill(COLOR_BG)
-        status_text = self.font.render(self.loading_status[min(self.current_status_index, len(self.loading_status) - 1)], True, COLOR_TEXT)
-        status_rect = status_text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
-        self.screen.blit(status_text, status_rect)
+        title_surf = self.font.render("Checkers AI", True, COLOR_TEXT)
+        title_rect = title_surf.get_rect(center=(WIDTH / 2, HEIGHT / 2 - 50))
+        
+        status_surf = self.small_font.render(self.status_message, True, COLOR_TEXT)
+        status_rect = status_surf.get_rect(center=(WIDTH / 2, HEIGHT / 2 + 20))
+        
+        self.screen.blit(title_surf, title_rect)
+        self.screen.blit(status_surf, status_rect)
         
 class PlayerSelectionScreen(BaseState):
     def __init__(self, screen):

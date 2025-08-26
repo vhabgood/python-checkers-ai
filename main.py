@@ -53,11 +53,10 @@ class StateManager:
         self.running = True
 
     def run(self):
-        """The main application loop."""
+        """The main application loop, now updated to pass the loading screen."""
         clock = pygame.time.Clock()
         while self.running:
             events = pygame.event.get()
-            # Check if the current state is finished and needs to transition
             if self.current_state.done:
                 next_state_name = self.current_state.next_state
                 if next_state_name is None:
@@ -66,10 +65,13 @@ class StateManager:
                     pygame.time.wait(3000)
                     self.running = False
                     continue
+                    
                 # When transitioning to the game, initialize the CheckersGame class
                 if next_state_name == "game":
                     player_choice = self.current_state.player_choice
-                    self.states["game"] = CheckersGame(self.screen, player_choice)
+                     # Pass the loading_screen object to the CheckersGame constructor
+                    loading_screen = self.states["loading"]
+                    self.states["game"] = CheckersGame(self.screen, player_choice, loading_screen)
                 self.current_state = self.states[next_state_name]
             
             # Run the event handling, update, and draw logic for the current state

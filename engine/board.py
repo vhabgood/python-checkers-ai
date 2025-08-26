@@ -18,6 +18,39 @@ class Board:
         self.turn = RED # Red always starts in checkers
         self.create_board()
         logger.debug("Board initialized.")
+        
+            # --- ZOBRIST HASHING ---
+    def _init_zobrist(self):
+        """
+        Initializes the Zobrist table with random 64-bit numbers for each
+        possible piece at each possible square.
+        """
+        table = {}
+        # For each square, for each piece type (red/white, man/king)
+        for r in range(ROWS):
+            for c in range(COLS):
+                for color in [RED, WHITE]:
+                    for is_king in [True, False]:
+                        table[(r, c, color, is_king)] = random.getrandbits(64)
+        # Add a value for whose turn it is
+        table['turn'] = random.getrandbits(64)
+        return table
+
+    def _compute_hash(self):
+        """
+        Calculates the initial Zobrist hash for the starting board position.
+        This is only done once; the hash is updated incrementally afterwards.
+        """
+        h = 0
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.get_piece(r, c)
+                if piece != 0:
+                    h ^= self.zobrist_table[(r, c, piece.color, piece.king)]
+        if self.turn == WHITE:
+            h ^= self.zobrist_table['turn']
+        return h
+    # --- END ZOBRIST HASHING ---
 
     def create_board(self):
         """
@@ -46,41 +79,46 @@ class Board:
 
     def move(self, piece, row, col):
         """
-        Moves a piece to a new location on the board. This explicit, multi-line
-        version prevents state inconsistency bugs.
+        The master move function, now with incremental hash updates.
         """
-        # Step 1: Set the piece's original square on the board to be empty (0).
-        self.board[piece.row][piece.col] = 0
+        # --- HASH UPDATE ---
+        # 1. XOR out the piece from its old position
+        self.hash ^= self.zobrist_table[(piece.row, piece.col, piece.color, piece.king)]
+        # ---
         
-        # Step 2: Place the piece object in its new square on the board.
+        self.board[piece.row][piece.col] = 0
         self.board[row][col] = piece
         
-        # Step 3: CRITICAL - Update the piece's internal coordinates to match.
+        was_king = piece.king
         piece.move(row, col)
 
-        # Step 4: Handle promotion to a king if the piece reaches the back rank.
         if row == ROWS - 1 or row == 0:
             if not piece.king:
                 piece.make_king()
-                if piece.color == WHITE:
-                    self.white_kings += 1
-                else:
-                    self.red_kings += 1
+                if piece.color == WHITE: self.white_kings += 1
+                else: self.red_kings += 1
+        
+        # --- HASH UPDATE ---
+        # 2. XOR in the piece at its new position, considering if it became a king
+        if not was_king and piece.king:
+            self.hash ^= self.zobrist_table[(row, col, piece.color, True)]
+        else:
+            self.hash ^= self.zobrist_table[(row, col, piece.color, piece.king)]
+        # ---
 
     def _remove(self, pieces):
         """
-        Removes a list of captured pieces from the board and updates
-        the count of remaining pieces.
+        Removes captured pieces, now with incremental hash updates.
         """
         for piece in pieces:
-            # Set the square on the board grid to be empty (0)
-            self.board[piece.row][piece.col] = 0
-            # Decrement the count of remaining pieces
             if piece is not None and piece != 0:
-                if piece.color == RED:
-                    self.red_left -= 1
-                else:
-                    self.white_left -= 1
+                # --- HASH UPDATE ---
+                # XOR out the captured piece from its position
+                self.hash ^= self.zobrist_table[(piece.row, piece.col, piece.color, piece.king)]
+                # ---
+                self.board[piece.row][piece.col] = 0
+                if piece.color == RED: self.red_left -= 1
+                else: self.white_left -= 1
     
     def get_piece(self, row, col):
         """Returns the piece object at a given row and col."""

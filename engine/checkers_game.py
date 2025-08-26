@@ -5,6 +5,8 @@ import threading
 import queue
 import copy
 import time
+import pickle # <--- Add this import
+import os     # <--- Add this import
 from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_AI_DEPTH, COORD_TO_ACF, GREY
 import engine.constants as constants
@@ -19,7 +21,8 @@ class CheckersGame:
     The main game state manager. It handles the game loop, player input,
     AI turn management via threading, and drawing everything to the screen.
     """
-    def __init__(self, screen, player_color_str):
+   # Update the __init__ method to accept the loading screen
+    def __init__(self, screen, player_color_str, loading_screen):
         self.screen = screen
         self.board = Board()
         self.player_color = WHITE if player_color_str == 'white' else RED
@@ -40,6 +43,19 @@ class CheckersGame:
         self.small_font = pygame.font.SysFont(None, 18)
         self.dev_font = pygame.font.SysFont('monospace', 12) #was 16
         self.number_font = pygame.font.SysFont(None, 18)
+        
+        # --- DATABASE INTEGRATION ---
+        self.opening_book = self._load_database('resources/custom_book.pkl')
+        self.endgame_db = self._load_database('resources/game_resources.pkl')
+        # Load databases one by one, updating the loading screen status
+        loading_screen.set_status("Loading Opening Book...")
+        self.opening_book = self._load_database('resources/custom_book.pkl')        
+        loading_screen.set_status("Loading Endgame Tablebases...")
+        self.endgame_db = self._load_database('resources/game_resources.pkl')
+        
+        loading_screen.set_status("Finalizing...")
+        # --- END DATABASE INTEGRATION ---
+        # --- END DATABASE INTEGRATION ---
         
         # AI threading and communication setup
         self.ai_move_queue = queue.Queue()
@@ -164,11 +180,38 @@ class CheckersGame:
 
     def run_ai_calculation(self, color_to_move):
         """
-        This function is executed in a separate thread. It calls the search
-        algorithm and puts the result (the best move path) onto a queue
-        for the main game loop to retrieve.
+        This function now checks databases before starting the main search.
         """
         try:
+            # --- DATABASE LOOKUP ---
+            board_hash = self.board.hash
+            
+            # 1. Check Opening Book (if early in the game)
+            if self.board.red_left > 8 and self.board.white_left > 8 and board_hash in self.opening_book:
+                logger.info("AI found move in opening book.")
+                move_path = self.opening_book[board_hash]
+                # We need to find the score for the dev panel, so we do a quick 1-ply search
+                _, top_moves = get_ai_move_analysis(self.board, 1, color_to_move, evaluate_board)
+                self.ai_move_queue.put(move_path)
+                if top_moves:
+                    self.positional_score = top_moves[0][0]
+                    self.ai_top_moves = top_moves
+                return # Skip the full search
+
+            # 2. Check Endgame Tablebase (if late in the game)
+            if self.board.red_left + self.board.white_left <= 7 and board_hash in self.endgame_db:
+                logger.info("AI found move in endgame database.")
+                db_entry = self.endgame_db[board_hash]
+                move_path = db_entry['move']
+                score = db_entry['score']
+                self.ai_move_queue.put(move_path)
+                self.positional_score = score
+                # For the dev panel, we'll just show the single best move from the DB
+                self.ai_top_moves = [(score, move_path)]
+                return # Skip the full search
+            # --- END DATABASE LOOKUP ---
+            
+            # If no database hit, proceed with the normal minimax search
             best_move_path, top_moves = get_ai_move_analysis(self.board, self.ai_depth, color_to_move, evaluate_board)
             
             if best_move_path:
@@ -176,10 +219,10 @@ class CheckersGame:
                 self.ai_top_moves = top_moves
                 self.ai_move_queue.put(best_move_path)
             else:
-                self.ai_move_queue.put([]) # Put an empty list if no moves are found
+                self.ai_move_queue.put([])
         except Exception as e:
             logger.error(f"AI calculation failed: {e}")
-            self.ai_move_queue.put(None) # Put None to signal an error
+            self.ai_move_queue.put(None)
         finally:
             self.ai_is_thinking = False
             if self.ai_top_moves:
@@ -450,3 +493,18 @@ class CheckersGame:
                         break 
                 else: # If no button was clicked, handle it as a board click
                     self._handle_click(event.pos)
+                    
+                       # --- DATABASE INTEGRATION ---
+    def _load_database(self, file_path):
+        """Loads a pickled database file from the resources directory."""
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'rb') as f:
+                    logger.info(f"Loading database: {file_path}")
+                    return pickle.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load database {file_path}: {e}")
+        else:
+            logger.warning(f"Database file not found: {file_path}")
+        return {} # Return an empty dictionary if loading fails
+    # --- END DATABASE INTEGRATION ---
