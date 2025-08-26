@@ -2,6 +2,7 @@
 import pygame
 import logging
 import time
+import queue
 from engine.constants import (
     COLOR_BG, COLOR_BUTTON, COLOR_BUTTON_HOVER, COLOR_TEXT,
     RED, WHITE, PLAYER_NAMES, WIDTH, HEIGHT
@@ -46,31 +47,31 @@ class BaseState:
         raise NotImplementedError
 
 class LoadingScreen:
-    """A screen that shows a loading message and progress."""
+    """A screen that shows a loading message and progress, now with a thread-safe queue."""
     def __init__(self, screen):
         self.screen = screen
         self.done = False
         self.next_state = "player_selection"
         self.font = pygame.font.SysFont(None, 48)
         self.small_font = pygame.font.SysFont(None, 24)
-        self.status_message = "Loading..." # Default message
-
-    def set_status(self, message):
-        """Allows other parts of the program to update the loading message."""
-        self.status_message = message
-        # We redraw the screen immediately to show the new status
-        self.draw()
-        pygame.display.flip()
+        self.status_message = "Initializing..."
+        
+        # --- THREADING FIX ---
+        # A queue to safely receive status updates from the loading thread.
+        self.status_queue = queue.Queue()
+        # --- END FIX ---
 
     def handle_events(self, events):
         # The loading screen doesn't handle any events
         pass
 
     def update(self):
-        # In a real game, you might check asset loading progress here.
-        # For now, we'll just show it for a fixed time.
-        pygame.time.wait(2000) # Show the screen for 2 seconds
-        self.done = True
+        """Checks the queue for new status messages from the loading thread."""
+        try:
+            # Check for a new message without blocking
+            self.status_message = self.status_queue.get_nowait()
+        except queue.Empty:
+            pass # It's normal for the queue to be empty most of the time
 
     def draw(self):
         """Draws the loading text and the current status message."""

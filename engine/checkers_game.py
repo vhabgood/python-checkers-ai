@@ -44,17 +44,23 @@ class CheckersGame:
         self.dev_font = pygame.font.SysFont('monospace', 12) #was 16
         self.number_font = pygame.font.SysFont(None, 18)
         
-        # --- DATABASE INTEGRATION ---
+         
+        # --- THREADING FIX ---
+        # The game now sends status messages to the loading screen's queue
+        # instead of trying to update the display directly from this thread.
+        loading_screen.status_queue.put("Loading Opening Book...")
         self.opening_book = self._load_database('resources/custom_book.pkl')
-        self.endgame_db = self._load_database('resources/game_resources.pkl')
-        # Load databases one by one, updating the loading screen status
-        loading_screen.set_status("Loading Opening Book...")
-        self.opening_book = self._load_database('resources/custom_book.pkl')        
-        loading_screen.set_status("Loading Endgame Tablebases...")
+        
+        loading_screen.status_queue.put("Loading Endgame Tablebases...")
         self.endgame_db = self._load_database('resources/game_resources.pkl')
         
-        loading_screen.set_status("Finalizing...")
-        # --- END DATABASE INTEGRATION ---
+        loading_screen.status_queue.put("Finalizing...")
+        # A small delay for visual effect
+        time.sleep(0.5) 
+        # --- END FIX ---
+        
+        self._create_buttons()
+        self._update_valid_moves()
         # --- END DATABASE INTEGRATION ---
         
         # AI threading and communication setup

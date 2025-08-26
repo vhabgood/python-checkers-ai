@@ -4,6 +4,7 @@ import logging
 import datetime
 import argparse
 import sys
+import threading
 import os
 
 from engine.checkers_game import CheckersGame
@@ -39,47 +40,76 @@ def configure_logging(args):
 
 class StateManager:
     """
-    Manages the different screens (states) of the application, such as the
-    loading screen, player selection, and the main game.
+    Manages the different screens (states) of the application. It now uses a
+    separate thread to load game assets to prevent the UI from freezing.
     """
     def __init__(self, screen):
         self.screen = screen
         self.states = {
             "loading": LoadingScreen(self.screen),
             "player_selection": PlayerSelectionScreen(self.screen),
-            "game": None # The main game is initialized later
+            "game": None
         }
         self.current_state = self.states["loading"]
         self.running = True
+        
+        # --- THREADING FIX ---
+        self.loading_thread = None
+        self.game_instance = None # This will hold the loaded CheckersGame object
+        # --- END FIX ---
 
+    def load_game_thread(self, player_choice):
+        """
+        This function runs in a separate thread. It creates the CheckersGame
+        instance, which performs the heavy lifting of loading databases.
+        """
+        loading_screen = self.states["loading"]
+        try:
+            # This is the long-running operation that was freezing the game
+            self.game_instance = CheckersGame(self.screen, player_choice, loading_screen)
+        except Exception as e:
+            logger.error(f"Failed to load game assets in thread: {e}")
+            self.game_instance = None # Signal that loading failed
+            
     def run(self):
-        """The main application loop, now updated to pass the loading screen."""
+        """The main application loop, now with simplified and correct thread handling."""
         clock = pygame.time.Clock()
         while self.running:
             events = pygame.event.get()
+
+            # --- State Transition Logic ---
             if self.current_state.done:
                 next_state_name = self.current_state.next_state
                 if next_state_name is None:
-                    self.current_state.draw()
-                    pygame.display.flip()
-                    pygame.time.wait(3000)
                     self.running = False
                     continue
-                    
-                # When transitioning to the game, initialize the CheckersGame class
+                
                 if next_state_name == "game":
-                    player_choice = self.current_state.player_choice
-                     # Pass the loading_screen object to the CheckersGame constructor
-                    loading_screen = self.states["loading"]
-                    self.states["game"] = CheckersGame(self.screen, player_choice, loading_screen)
-                self.current_state = self.states[next_state_name]
-            
-            # Run the event handling, update, and draw logic for the current state
-            if self.current_state is not None:
-                self.current_state.handle_events(events)
-                self.current_state.update()
-                self.current_state.draw()
-            
+                    # If the game instance has been loaded by the thread, switch to it.
+                    if self.game_instance:
+                        self.states["game"] = self.game_instance
+                        self.current_state = self.states["game"]
+                        self.loading_thread = None # Clear the completed thread
+                        if self.game_instance is None:
+                            logger.critical("Game instance failed to load. Exiting.")
+                            self.running = False
+                    # If the loading thread hasn't started yet, start it.
+                    elif self.loading_thread is None:
+                        player_choice = self.states["player_selection"].player_choice
+                        self.states["loading"].done = False
+                        self.current_state = self.states["loading"]
+                        self.loading_thread = threading.Thread(target=self.load_game_thread, args=(player_choice,), daemon=True)
+                        self.loading_thread.start()
+                else:
+                    self.current_state = self.states[next_state_name]
+
+            # --- Main Update and Draw Logic ---
+            # This simplified logic works for all states now.
+            # The loading screen will update its message from its queue.
+            self.current_state.handle_events(events)
+            self.current_state.update()
+            self.current_state.draw()
+
             for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
