@@ -61,6 +61,40 @@ class LoadingScreen:
         self.status_queue = queue.Queue()
         # --- END FIX ---
 
+#
+# --- CHANGE START ---
+#
+    def reset(self):
+        """Resets the loading screen to its initial state for a new loading sequence."""
+        self.done = False
+        self.status_message = "Loading Databases..."
+        # Use hasattr to safely initialize start_time
+        if not hasattr(self, 'start_time'):
+            self.start_time = pygame.time.get_ticks()
+        else:
+            self.start_time = pygame.time.get_ticks()
+#
+# --- CHANGE END ---
+#
+
+#
+# --- CHANGE START ---
+#
+    def update(self):
+        """Checks the queue for new status messages from the loading thread."""
+        try:
+            # Check for a new message without blocking
+            self.status_message = self.status_queue.get_nowait()
+            # If we receive the final message, mark the screen as done
+            if self.status_message == "Load Complete!":
+                self.done = True
+                self.next_state = "game" # Set the next state to transition to
+        except queue.Empty:
+            pass
+#
+# --- CHANGE END ---
+#
+
     def handle_events(self, events):
         pass
 
@@ -83,6 +117,13 @@ class LoadingScreen:
         
         self.screen.blit(title_surf, title_rect)
         self.screen.blit(status_surf, status_rect)
+
+    def reset(self):
+        """Resets the loading screen to its initial state."""
+        self.done = False
+        self.status_message = "Loading Databases..."
+        if not hasattr(self, 'start_time'):
+            self.start_time = pygame.time.get_ticks()
         
 class PlayerSelectionScreen(BaseState):
     def __init__(self, screen):

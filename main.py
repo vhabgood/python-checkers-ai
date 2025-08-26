@@ -38,10 +38,13 @@ def configure_logging(args):
     logging.getLogger('gui').setLevel(logging.INFO if not args.debug_gui else logging.DEBUG)
     logging.getLogger('board').setLevel(logging.INFO if not args.debug_board else logging.DEBUG)
 
+#
+# --- CHANGE START ---
+#
 class StateManager:
     """
-    Manages the different screens (states) of the application. It now uses a
-    separate thread to load game assets to prevent the UI from freezing.
+    Manages game states with a non-blocking, threaded asset loader.
+    This version contains the final, correct logic for the main game loop.
     """
     def __init__(self, screen):
         self.screen = screen
@@ -52,27 +55,26 @@ class StateManager:
         }
         self.current_state = self.states["loading"]
         self.running = True
-        
-        # --- THREADING FIX ---
         self.loading_thread = None
-        self.game_instance = None # This will hold the loaded CheckersGame object
-        # --- END FIX ---
+        self.game_instance = None
+        # Add a logger for debugging state transitions
+        self.logger = logging.getLogger('gui')
 
     def load_game_thread(self, player_choice):
-        """
-        This function runs in a separate thread. It creates the CheckersGame
-        instance, which performs the heavy lifting of loading databases.
-        """
+        """This function runs in a separate thread to load game assets."""
         loading_screen = self.states["loading"]
+        self.logger.info("DATABASE: Loading thread started.")
         try:
-            # This is the long-running operation that was freezing the game
             self.game_instance = CheckersGame(self.screen, player_choice, loading_screen)
+            loading_screen.status_queue.put("Load Complete!")
+            pygame.time.wait(500) # Give time for the message to be seen
         except Exception as e:
-            logger.error(f"Failed to load game assets in thread: {e}")
-            self.game_instance = None # Signal that loading failed
+            self.logger.error(f"DATABASE: Failed to load game assets in thread: {e}")
+            self.game_instance = None
+        self.logger.info("DATABASE: Loading thread finished.")
 
     def run(self):
-        """The main application loop, now with simplified and correct thread handling."""
+        """The main application loop with corrected thread management."""
         clock = pygame.time.Clock()
         while self.running:
             events = pygame.event.get()
@@ -80,34 +82,40 @@ class StateManager:
             # --- State Transition Logic ---
             if self.current_state.done:
                 next_state_name = self.current_state.next_state
-                if next_state_name is None:
-                    self.running = False
-                    continue
-                
                 if next_state_name == "game":
-                    # If the game instance has been loaded by the thread, switch to it.
-                    if self.game_instance:
-                        self.states["game"] = self.game_instance
-                        self.current_state = self.states["game"]
-                        self.loading_thread = None # Clear the completed thread
-                        if self.game_instance is None:
-                            logger.critical("Game instance failed to load. Exiting.")
-                            self.running = False
-                    # If the loading thread hasn't started yet, start it.
-                    elif self.loading_thread is None:
+                    if self.loading_thread is None:
                         player_choice = self.states["player_selection"].player_choice
-                        self.states["loading"].done = False
+                        self.states["loading"].reset()
                         self.current_state = self.states["loading"]
                         self.loading_thread = threading.Thread(target=self.load_game_thread, args=(player_choice,), daemon=True)
                         self.loading_thread.start()
+                        self.logger.debug("MAIN: Database loading thread initiated.")
+                elif next_state_name is None:
+                    self.running = False
                 else:
                     self.current_state = self.states[next_state_name]
+            
             # --- Main Update and Draw Logic ---
-            # This simplified logic works for all states now.
-            # The loading screen will update its message from its queue.
-            self.current_state.handle_events(events)
-            self.current_state.update()
-            self.current_state.draw()
+            
+            # If the loading thread is active, ONLY update and draw the loading screen.
+            if self.loading_thread and self.loading_thread.is_alive():
+                self.states["loading"].handle_events(events)
+                self.states["loading"].update()
+                self.states["loading"].draw()
+            # If the thread has finished, complete the transition to the game state.
+            elif self.loading_thread and not self.loading_thread.is_alive():
+                self.logger.debug("MAIN: Loading thread complete. Transitioning to game state.")
+                self.states["game"] = self.game_instance
+                self.current_state = self.states["game"]
+                self.loading_thread = None # Clear the completed thread
+                if self.game_instance is None:
+                    self.logger.critical("Game instance failed to load. Exiting.")
+                    self.running = False
+            # Otherwise, run the normal game loop for the current state.
+            else:
+                self.current_state.handle_events(events)
+                self.current_state.update()
+                self.current_state.draw()
 
             for event in events:
                 if event.type == pygame.QUIT:
@@ -116,6 +124,9 @@ class StateManager:
             pygame.display.flip()
             clock.tick(FPS)
         pygame.quit()
+#
+# --- CHANGE END ---
+#
 
 # This is the main entry point when the script is run.
 if __name__ == "__main__":
