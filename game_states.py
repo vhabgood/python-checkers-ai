@@ -118,12 +118,20 @@ class LoadingScreen:
         self.screen.blit(title_surf, title_rect)
         self.screen.blit(status_surf, status_rect)
 
+#
+# --- CHANGE START ---
+#
     def reset(self):
-        """Resets the loading screen to its initial state."""
+        """Resets the loading screen to its initial state for a new loading sequence."""
         self.done = False
         self.status_message = "Loading Databases..."
         if not hasattr(self, 'start_time'):
             self.start_time = pygame.time.get_ticks()
+        else:
+            self.start_time = pygame.time.get_ticks()
+#
+# --- CHANGE END ---
+#
         
 class PlayerSelectionScreen(BaseState):
     def __init__(self, screen):
@@ -147,8 +155,23 @@ class PlayerSelectionScreen(BaseState):
                         self.done = True
                         logger.info(f"Player selected {player_color_name}.")
 
+#
+# --- CHANGE START ---
+#
     def update(self):
-        pass
+        """Checks the queue for new status messages from the loading thread."""
+        try:
+            message = self.status_queue.get_nowait()
+            if message == "DONE":
+                self.done = True
+                self.next_state = "game" # This tells the StateManager to switch
+            else:
+                self.status_message = message
+        except queue.Empty:
+            pass
+#
+# --- CHANGE END ---
+#
 
     def draw(self):
         self.screen.fill(COLOR_BG)

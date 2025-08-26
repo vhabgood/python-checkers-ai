@@ -57,7 +57,6 @@ class StateManager:
         self.running = True
         self.loading_thread = None
         self.game_instance = None
-        # Add a logger for debugging state transitions
         self.logger = logging.getLogger('gui')
 
     def load_game_thread(self, player_choice):
@@ -66,11 +65,12 @@ class StateManager:
         self.logger.info("DATABASE: Loading thread started.")
         try:
             self.game_instance = CheckersGame(self.screen, player_choice, loading_screen)
-            loading_screen.status_queue.put("Load Complete!")
-            pygame.time.wait(500) # Give time for the message to be seen
+            # When loading is done, put the final 'done' signal on the queue.
+            loading_screen.status_queue.put("DONE")
         except Exception as e:
             self.logger.error(f"DATABASE: Failed to load game assets in thread: {e}")
             self.game_instance = None
+            loading_screen.status_queue.put("DONE") # Also signal done on failure
         self.logger.info("DATABASE: Loading thread finished.")
 
     def run(self):
@@ -79,30 +79,12 @@ class StateManager:
         while self.running:
             events = pygame.event.get()
 
-            # --- State Transition Logic ---
-            if self.current_state.done:
-                next_state_name = self.current_state.next_state
-                if next_state_name == "game":
-                    if self.loading_thread is None:
-                        player_choice = self.states["player_selection"].player_choice
-                        self.states["loading"].reset()
-                        self.current_state = self.states["loading"]
-                        self.loading_thread = threading.Thread(target=self.load_game_thread, args=(player_choice,), daemon=True)
-                        self.loading_thread.start()
-                        self.logger.debug("MAIN: Database loading thread initiated.")
-                elif next_state_name is None:
-                    self.running = False
-                else:
-                    self.current_state = self.states[next_state_name]
-            
-            # --- Main Update and Draw Logic ---
-            
-            # If the loading thread is active, ONLY update and draw the loading screen.
+            # If the loading thread is active, we bypass the normal state machine
+            # and ONLY update and draw the loading screen. This is the key fix.
             if self.loading_thread and self.loading_thread.is_alive():
-                self.states["loading"].handle_events(events)
                 self.states["loading"].update()
                 self.states["loading"].draw()
-            # If the thread has finished, complete the transition to the game state.
+            # If the thread just finished, transition to the game state.
             elif self.loading_thread and not self.loading_thread.is_alive():
                 self.logger.debug("MAIN: Loading thread complete. Transitioning to game state.")
                 self.states["game"] = self.game_instance
@@ -111,8 +93,30 @@ class StateManager:
                 if self.game_instance is None:
                     self.logger.critical("Game instance failed to load. Exiting.")
                     self.running = False
-            # Otherwise, run the normal game loop for the current state.
+                # We need to immediately update and draw the new game state
+                if self.current_state:
+                    self.current_state.handle_events(events)
+                    self.current_state.update()
+                    self.current_state.draw()
             else:
+                # This is the normal game loop for all other states.
+                if self.current_state.done:
+                    next_state_name = self.current_state.next_state
+                    if next_state_name == "game":
+                        # Instead of transitioning, we start the loading thread.
+                        # The loop above will then take over.
+                        player_choice = self.states["player_selection"].player_choice
+                        self.states["loading"].reset()
+                        self.current_state = self.states["loading"]
+                        self.loading_thread = threading.Thread(target=self.load_game_thread, args=(player_choice,), daemon=True)
+                        self.loading_thread.start()
+                        self.logger.debug("MAIN: Database loading thread initiated.")
+                    elif next_state_name is None:
+                        self.running = False
+                    else:
+                        self.current_state = self.states[next_state_name]
+                
+                # Update and draw the current, non-loading state.
                 self.current_state.handle_events(events)
                 self.current_state.update()
                 self.current_state.draw()
