@@ -46,24 +46,59 @@ class BaseState:
     def draw(self):
         raise NotImplementedError
 
-class LoadingScreen:
-    """A screen that shows a loading message and progress, now with a thread-safe queue."""
-    def __init__(self, screen):
-        self.screen = screen
-        self.done = False
-        self.next_state = "player_selection"
-        self.font = pygame.font.SysFont(None, 48)
-        self.small_font = pygame.font.SysFont(None, 24)
-        self.status_message = "Initializing..."
-        
-        # --- THREADING FIX ---
-        # A queue to safely receive status updates from the loading thread.
-        self.status_queue = queue.Queue()
-        # --- END FIX ---
+# Add this entire class to game_states.py
+# It can go right before the PlayerSelectionScreen class
 
-#
-# --- CHANGE START ---
-#
+class LoadingScreen(State):
+    """
+    A state to display a loading message while game assets, especially
+    large database files, are loaded in a separate thread.
+    """
+    def __init__(self):
+        super().__init__()
+        self.next_state = "PLAYER_SELECTION"
+        self.font = pygame.font.Font(None, 74)
+        self.text = self.font.render("Loading Databases...", True, pygame.Color("white"))
+        self.text_rect = self.text.get_rect(center=self.screen_rect.center)
+        self.databases = {}
+        self.loading_thread_started = False
+
+    def load_action(self):
+        """The function that will run in the background thread."""
+        logger.info("Background database loading started.")
+        db_path = Path("resources")
+        files = list(db_path.glob("*.pkl"))
+        for i, file in enumerate(files):
+            # We skip game_resources.pkl as it's not a database
+            if file.stem == "game_resources":
+                continue
+            try:
+                with open(file, "rb") as f:
+                    self.databases[file.stem] = pickle.load(f)
+                logger.info(f"Loaded database ({i+1}/{len(files)}): {file.name}")
+            except Exception as e:
+                logger.error(f"Failed to load {file.name}: {e}")
+        logger.info("Background database loading finished.")
+        # When done, this dictionary will be passed to the next state.
+        self.persist["databases"] = self.databases
+        self.done = True # Signal to the state machine we are done
+
+    def startup(self, persistent):
+        """Called once when the state begins."""
+        self.persist = persistent
+        # Start the thread only once.
+        if not self.loading_thread_started:
+            threading.Thread(target=self.load_action).start()
+            self.loading_thread_started = True
+
+    def update(self, dt):
+        """Update is called every frame, but our work is in the thread."""
+        pass # No need to do anything here until the thread sets self.done
+
+    def draw(self, surface):
+        """Draws the 'Loading...' text."""
+        surface.fill(pygame.Color("black"))
+        surface.blit(self.text, self.text_rect)
     def reset(self):
         """Resets the loading screen to its initial state for a new loading sequence."""
         self.done = False
