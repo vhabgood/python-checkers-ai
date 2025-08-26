@@ -73,6 +73,9 @@ class StateManager:
             loading_screen.status_queue.put("DONE") # Also signal done on failure
         self.logger.info("DATABASE: Loading thread finished.")
 
+#
+# --- CHANGE START ---
+#
     def run(self):
         """The main application loop with corrected thread management."""
         clock = pygame.time.Clock()
@@ -82,9 +85,10 @@ class StateManager:
             # If the loading thread is active, we bypass the normal state machine
             # and ONLY update and draw the loading screen. This is the key fix.
             if self.loading_thread and self.loading_thread.is_alive():
+                self.states["loading"].handle_events(events)
                 self.states["loading"].update()
                 self.states["loading"].draw()
-            # If the thread just finished, transition to the game state.
+            # If the thread just finished, complete the transition to the game state.
             elif self.loading_thread and not self.loading_thread.is_alive():
                 self.logger.debug("MAIN: Loading thread complete. Transitioning to game state.")
                 self.states["game"] = self.game_instance
@@ -93,7 +97,7 @@ class StateManager:
                 if self.game_instance is None:
                     self.logger.critical("Game instance failed to load. Exiting.")
                     self.running = False
-                # We need to immediately update and draw the new game state
+                # Immediately update and draw the new game state once
                 if self.current_state:
                     self.current_state.handle_events(events)
                     self.current_state.update()
@@ -103,7 +107,7 @@ class StateManager:
                 if self.current_state.done:
                     next_state_name = self.current_state.next_state
                     if next_state_name == "game":
-                        # Instead of transitioning, we start the loading thread.
+                        # Instead of transitioning directly, start the loading thread.
                         # The loop above will then take over.
                         player_choice = self.states["player_selection"].player_choice
                         self.states["loading"].reset()
