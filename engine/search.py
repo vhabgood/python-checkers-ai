@@ -14,7 +14,7 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
     possible_moves = list(get_all_move_sequences(board, ai_color))
 
     if not possible_moves:
-        logger.debug("AI SEARCH: No possible moves found.")
+        logger.debug(f"AI SEARCH (depth {depth}, {ai_color}): No possible moves found.")
         return [], []
 
     all_scored_moves = []

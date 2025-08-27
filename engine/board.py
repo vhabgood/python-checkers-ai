@@ -21,7 +21,6 @@ class Board:
         self.create_board()
         self.zobrist_table = self._init_zobrist()
         self.hash = self._compute_hash()
-        logger.debug(f"Board initialized with Zobrist hash: {self.hash}")
         
     def _init_zobrist(self):
         """Initializes the Zobrist table with random numbers."""
