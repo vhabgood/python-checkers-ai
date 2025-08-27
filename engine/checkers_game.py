@@ -23,6 +23,7 @@ class CheckersGame:
     AI turn management via threading, and drawing everything to the screen.
     """
     def __init__(self, screen, player_color_str, status_queue, args): # Add args here
+        logger.critical("--- NEW CHECKERS GAME INSTANCE CREATED ---")
         self.screen = screen
         self.args = args # Store args
         self.board = Board()
@@ -45,7 +46,6 @@ class CheckersGame:
         self.number_font = pygame.font.SysFont(None, 18)
         self.ai_move_queue = queue.Queue()
         self.ai_thread = None
-        self.ai_is_thinking = False
         self.positional_score = 0.0
         self.ai_top_moves = []
         self.ai_depth = DEFAULT_AI_DEPTH
@@ -153,7 +153,9 @@ class CheckersGame:
         self._update_valid_moves()
 
     def undo_move(self):
-        if self.ai_is_thinking or self.done or not self.history: return
+        is_ai_thinking = self.ai_thread and self.ai_thread.is_alive()
+        if is_ai_thinking or self.done or not self.history:
+            return
         self.board = self.history.pop()
         if self.move_history: self.move_history.pop()
         self.turn = self.board.turn
@@ -167,18 +169,21 @@ class CheckersGame:
         logger.info("Export to PDN button clicked (not implemented).")
 
     def force_ai_move(self):
-        if self.turn == self.player_color and not self.ai_is_thinking and not self.done:
+        is_ai_thinking = self.ai_thread and self.ai_thread.is_alive()
+        if self.turn == self.player_color and not is_ai_thinking and not self.done:
             logger.info(f"Player forcing AI to calculate move for {constants.PLAYER_NAMES[self.player_color]}")
             self.start_ai_turn(force_color=self.player_color)
     
     def start_ai_turn(self, force_color=None):
-        if self.ai_thread and self.ai_thread.is_alive(): return
+        is_ai_thinking = self.ai_thread and self.ai_thread.is_alive()
+        if is_ai_thinking: 
+            logger.warning("AI is already thinking, start_ai_turn call ignored.")
+            return
         
-        self.ai_is_thinking = True
         self.ai_top_moves = []
         color_to_move = force_color if force_color else self.ai_color
         
-        logger.info(f"Starting AI calculation with depth {self.ai_depth}...")
+        logger.info(f"STARTING AI THREAD: Depth {self.ai_depth} for {constants.PLAYER_NAMES[color_to_move]}...")
         self.ai_thread = threading.Thread(target=self.run_ai_calculation, args=(color_to_move,), daemon=True)
         self.ai_thread.start()
 
@@ -196,7 +201,6 @@ class CheckersGame:
                     self.ai_top_moves = top_moves
                 return
 
-            # Only check endgame DB if it was loaded
             if self.endgame_db and self.board.red_left + self.board.white_left <= 8 and board_hash in self.endgame_db:
                 db_entry = self.endgame_db[board_hash]
                 move_path = db_entry['move']
@@ -219,7 +223,6 @@ class CheckersGame:
             logger.error(f"AI calculation failed: {e}", exc_info=True)
             self.ai_move_queue.put(None)
         finally:
-            self.ai_is_thinking = False
             if self.ai_top_moves:
                 logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
 
@@ -233,10 +236,12 @@ class CheckersGame:
             self.valid_moves = self.board.get_all_valid_moves(self.turn)
     
     def _change_turn(self):
+        logger.debug(f"Changing turn from {constants.PLAYER_NAMES[self.turn]}...")
         self.selected_piece = None
         self.turn = RED if self.turn == WHITE else WHITE
         self.board.turn = self.turn
         self._update_valid_moves()
+        logger.debug(f"...turn is now {constants.PLAYER_NAMES[self.turn]}.")
 
     def _select(self, row, col):
         if self.selected_piece:
@@ -254,31 +259,42 @@ class CheckersGame:
             self.selected_piece = None
 
     def _apply_move_sequence(self, path):
-        if not path or len(path) < 2: return
+        logger.debug(f"Applying move sequence: {self._format_move_path(path)}")
+        if not path or len(path) < 2:
+            return
 
         self.history.append(copy.deepcopy(self.board))
         self.move_history.append(path)
 
-        start_pos, end_pos = path[0], path[-1]
-        piece = self.board.get_piece(start_pos[0], start_pos[1])
-        
-        if piece == 0: return
+        piece = self.board.get_piece(path[0][0], path[0][1])
+        if piece == 0:
+            logger.warning(f"Attempted to move a piece from an empty square: {path[0]}")
+            return
 
-        is_jump = abs(start_pos[0] - end_pos[0]) == 2
-        
-        self.board.move(piece, end_pos[0], end_pos[1])
-
-        if is_jump:
-            mid_row, mid_col = (start_pos[0] + end_pos[0]) // 2, (start_pos[1] + end_pos[1]) // 2
-            jumped_piece = self.board.get_piece(mid_row, mid_col)
-            if jumped_piece != 0: self.board._remove([jumped_piece])
+        for i in range(len(path) - 1):
+            start_pos = path[i]
+            end_pos = path[i+1]
             
-            more_jumps = self.board._get_moves_for_piece(piece, find_jumps=True)
+            self.board.move(piece, end_pos[0], end_pos[1])
+            
+            is_jump = abs(start_pos[0] - end_pos[0]) == 2
+            if is_jump:
+                mid_row = (start_pos[0] + end_pos[0]) // 2
+                mid_col = (start_pos[1] + end_pos[1]) // 2
+                jumped_piece = self.board.get_piece(mid_row, mid_col)
+                if jumped_piece != 0:
+                    self.board._remove([jumped_piece])
+
+        final_pos_piece = self.board.get_piece(path[-1][0], path[-1][1])
+        if final_pos_piece != 0:
+            more_jumps = self.board._get_moves_for_piece(final_pos_piece, find_jumps=True)
             if more_jumps:
-                self.selected_piece = piece
-                self.valid_moves = {(piece.row, piece.col): more_jumps}
+                logger.debug("Multi-jump detected. Turn will not change yet.")
+                self.selected_piece = final_pos_piece
+                self.valid_moves = {(final_pos_piece.row, final_pos_piece.col): more_jumps}
                 return
 
+        logger.debug("Move sequence complete. Changing turn.")
         self._change_turn()
 
     def _handle_click(self, pos):
@@ -335,7 +351,8 @@ class CheckersGame:
         turn_text = self.large_font.render(turn_text_str, True, constants.COLOR_TEXT)
         self.screen.blit(turn_text, (panel_x + 10, 10))
         
-        if self.ai_is_thinking:
+        is_ai_thinking = self.ai_thread and self.ai_thread.is_alive()
+        if is_ai_thinking:
             thinking_text = self.font.render("AI is Thinking...", True, (255, 255, 0))
             self.screen.blit(thinking_text, (panel_x + 10, 35))
         
@@ -381,24 +398,27 @@ class CheckersGame:
         if self.done:
             return
 
-        try:
-            best_move_path = self.ai_move_queue.get_nowait()
-            logger.debug(f"GAME UPDATE: Move received from queue: {best_move_path}")
-            if isinstance(best_move_path, list) and best_move_path:
-                self._apply_move_sequence(best_move_path)
-            elif isinstance(best_move_path, list) and not best_move_path:
-                pass
-            elif best_move_path is None:
-                logger.warning("AI calculation failed and returned None. Turn will be skipped.")
-        except queue.Empty:
-            pass
+        is_ai_thinking = self.ai_thread and self.ai_thread.is_alive()
+        logger.debug(f"UPDATE START: Turn={constants.PLAYER_NAMES[self.turn]}, AI_Thread_Alive={is_ai_thinking}")
 
-        if not self.done and self.turn == self.ai_color and not self.ai_is_thinking:
-            self.start_ai_turn()
-
+        if self.turn == self.ai_color:
+            # If it's the AI's turn, we first check for a completed move.
+            try:
+                best_move_path = self.ai_move_queue.get_nowait()
+                logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
+                if isinstance(best_move_path, list):
+                    self._apply_move_sequence(best_move_path)
+                elif best_move_path is None:
+                    logger.warning("AI calculation returned None. Changing turn.")
+                    self._change_turn()
+            except queue.Empty:
+                # If the queue is empty, check if we need to start a new calculation.
+                if not is_ai_thinking:
+                    self.start_ai_turn()
+        
     def handle_events(self, events):
         for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 clicked_button = False
                 for button in self.buttons:
                     if button.is_clicked(event.pos):

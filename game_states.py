@@ -40,7 +40,7 @@ class BaseState:
         self.small_font = pygame.font.SysFont('Arial', 24)
 
 
-    def handle_events(self, events):
+    def handle_events(self, events, app=None): # Add app parameter for compatibility
         raise NotImplementedError
     def update(self):
         raise NotImplementedError
@@ -69,7 +69,7 @@ class LoadingScreen(BaseState):
             except queue.Empty:
                 break
 
-    def handle_events(self, events):
+    def handle_events(self, events, app=None):
         # The loading screen doesn't need to handle any events
         pass
 
@@ -100,9 +100,9 @@ class LoadingScreen(BaseState):
 class PlayerSelectionScreen(BaseState):
     def __init__(self, screen):
         super().__init__(screen)
-        # This state will transition to the loading screen
         self.next_state = "loading" 
         self.player_choice = None
+        self.selection_made = False # Flag to prevent double-clicks
         self.buttons = [
             Button('Play as Red', (WIDTH/2 - 100, 200), (200, 50), lambda: self.select_player(RED)),
             Button('Play as White', (WIDTH/2 - 100, 270), (200, 50), lambda: self.select_player(WHITE))
@@ -111,17 +111,25 @@ class PlayerSelectionScreen(BaseState):
 
     def select_player(self, color):
         """Callback function for the buttons."""
+        if self.selection_made:
+            logger.warning("Player selection already made, ignoring subsequent click.")
+            return
+        
+        self.selection_made = True
         player_color_name = PLAYER_NAMES.get(color)
         self.player_choice = player_color_name.lower()
         self.done = True
-        logger.info(f"Player selected {player_color_name}.")
+        logger.info(f"Player selected {player_color_name}. Selection is now locked.")
 
-    def handle_events(self, events):
+    def handle_events(self, events, app=None):
         for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Only handle clicks if a selection has NOT been made yet
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.selection_made:
                 for button in self.buttons:
                     if button.is_clicked(event.pos):
+                        logger.debug("Player selection button clicked.")
                         button.callback()
+                        break # Stop processing other buttons after a click
 
     def update(self):
         # This state doesn't have any continuous logic to update
