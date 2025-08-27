@@ -7,6 +7,7 @@ import copy
 import time
 import pickle
 import os
+import glob # <--- Add this import
 from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_AI_DEPTH
 import engine.constants as constants
@@ -21,7 +22,6 @@ class CheckersGame:
     The main game state manager. It handles the game loop, player input,
     AI turn management via threading, and drawing everything to the screen.
     """
-    # The __init__ method now accepts a queue to send loading status updates
     def __init__(self, screen, player_color_str, status_queue):
         self.screen = screen
         self.board = Board()
@@ -49,26 +49,22 @@ class CheckersGame:
         self.ai_top_moves = []
         self.ai_depth = DEFAULT_AI_DEPTH
 
-        # --- THREADED LOADING ---
-        # Send status messages to the loading screen via the provided queue
+        # --- THREADED LOADING (REVISED) ---
         status_queue.put("Loading Opening Book...")
         self.opening_book = self._load_database('resources/custom_book.pkl')
         
         status_queue.put("Loading Endgame Tablebases...")
-        # Example of loading multiple databases
-        self.endgame_db_3v2 = self._load_database('resources/db_3v2_kings.pkl')
-        self.endgame_db_4v3 = self._load_database('resources/db_4v3_kings.pkl')
-        # ... you would continue this for all your database files
+        self.endgame_db = self._load_and_merge_databases(status_queue)
         
         status_queue.put("Finalizing...")
-        time.sleep(0.5) # A small delay for visual effect
-        # --- END THREADED LOADING ---
+        time.sleep(0.5)
+        # --- END REVISION ---
         
         self._create_buttons()
         self._update_valid_moves()
 
     def _load_database(self, file_path):
-        """Loads a pickled database file from the resources directory."""
+        """Loads a single pickled database file."""
         if os.path.exists(file_path):
             try:
                 with open(file_path, 'rb') as f:
@@ -78,7 +74,27 @@ class CheckersGame:
                 logger.error(f"Failed to load database {file_path}: {e}")
         else:
             logger.warning(f"Database file not found: {file_path}")
-        return {} # Return an empty dictionary if loading fails
+        return {}
+
+    def _load_and_merge_databases(self, status_queue):
+        """
+        Finds all 'db_*.pkl' files, loads them, and merges them into a
+        single master endgame database dictionary.
+        """
+        master_db = {}
+        db_path = 'resources'
+        # Use glob to find all files matching the pattern 'db_*.pkl'
+        db_files = glob.glob(os.path.join(db_path, 'db_*.pkl'))
+        
+        for i, file_path in enumerate(db_files):
+            filename = os.path.basename(file_path)
+            status_queue.put(f"Loading DB ({i+1}/{len(db_files)}): {filename}")
+            db_content = self._load_database(file_path)
+            if db_content:
+                master_db.update(db_content)
+        
+        logger.info(f"Successfully merged {len(db_files)} endgame databases into a single table with {len(master_db)} positions.")
+        return master_db
 
     # --- Button Callbacks and UI Toggles ---
 
@@ -87,7 +103,6 @@ class CheckersGame:
         panel_x = BOARD_SIZE + 10
         button_width = self.screen.get_width() - BOARD_SIZE - 22
         button_height = 30
-        # Adjust y_start to make room for all buttons
         y_start = self.screen.get_height() - 50
 
         button_defs = [
@@ -107,7 +122,6 @@ class CheckersGame:
         self.buttons.append(Button("-", (panel_x, depth_btn_y), (30, 30), self.decrease_ai_depth))
         self.buttons.append(Button("+", (panel_x + button_width - 30, depth_btn_y), (30, 30), self.increase_ai_depth))
         
-        # Store references to buttons that need their text updated
         for btn in self.buttons:
             if "Board Nums" in btn.text: self.board_nums_button = btn
             elif "Dev Mode" in btn.text: self.dev_mode_button = btn
@@ -172,9 +186,37 @@ class CheckersGame:
         self.ai_thread.start()
 
     def run_ai_calculation(self, color_to_move):
+        """
+        This function now checks the consolidated databases before starting
+        the main minimax search.
+        """
         try:
-            # Database lookups would go here before the main search
-            # For brevity, this example proceeds directly to the search
+            board_hash = self.board.hash
+            
+            # 1. Check Opening Book
+            if self.board.red_left + self.board.white_left > 20 and board_hash in self.opening_book:
+                logger.info("AI found move in opening book.")
+                move_path = self.opening_book[board_hash]
+                _, top_moves = get_ai_move_analysis(self.board, 1, color_to_move, evaluate_board)
+                self.ai_move_queue.put(move_path)
+                if top_moves:
+                    self.positional_score = top_moves[0][0]
+                    self.ai_top_moves = top_moves
+                return
+
+            # 2. Check Endgame Tablebase
+            # The piece count condition can be adjusted
+            if self.board.red_left + self.board.white_left <= 7 and board_hash in self.endgame_db:
+                logger.info("AI found move in endgame database.")
+                db_entry = self.endgame_db[board_hash]
+                move_path = db_entry['move']
+                score = db_entry['score']
+                self.ai_move_queue.put(move_path)
+                self.positional_score = score
+                self.ai_top_moves = [(score, move_path)]
+                return
+            
+            # 3. If no database hit, proceed with the normal minimax search
             best_move_path, top_moves = get_ai_move_analysis(self.board, self.ai_depth, color_to_move, evaluate_board)
             
             if best_move_path:
@@ -182,10 +224,10 @@ class CheckersGame:
                 self.ai_top_moves = top_moves
                 self.ai_move_queue.put(best_move_path)
             else:
-                self.ai_move_queue.put([]) # AI has no moves
+                self.ai_move_queue.put([])
         except Exception as e:
             logger.error(f"AI calculation failed: {e}", exc_info=True)
-            self.ai_move_queue.put(None) # Signal an error
+            self.ai_move_queue.put(None)
         finally:
             self.ai_is_thinking = False
             if self.ai_top_moves:
@@ -276,10 +318,9 @@ class CheckersGame:
         self.screen.blit(title_surf, (panel_x, y_offset))
         y_offset += 30
         
-        # Draw limited history
         max_moves_to_show = 10
         start_index = max(0, len(self.move_history) - max_moves_to_show * 2)
-        if start_index % 2 != 0: start_index -= 1 # Ensure we start on a Red move
+        if start_index % 2 != 0: start_index -= 1
 
         for i in range(start_index, len(self.move_history), 2):
             move_num = (i // 2) + 1
@@ -317,7 +358,7 @@ class CheckersGame:
         title_surf = self.font.render("--- AI Analysis ---", True, WHITE)
         self.screen.blit(title_surf, (10, panel_y + 5))
         y_offset = 30
-        for i, (score, path) in enumerate(self.ai_top_moves[:10]): # Limit to top 10 moves
+        for i, (score, path) in enumerate(self.ai_top_moves[:10]):
             move_str = self._format_move_path(path)
             line = f"{i+1}. {move_str:<25} Score: {score:.2f}"
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
@@ -325,7 +366,7 @@ class CheckersGame:
             y_offset += 13
 
     def draw(self):
-        self.screen.fill(constants.COLOR_BG) # Fill background first
+        self.screen.fill(constants.COLOR_BG)
         self.board.draw(self.screen, self.number_font, self.show_board_numbers, self.board_flipped)
         self.draw_info_panel()
         self.draw_dev_panel()
