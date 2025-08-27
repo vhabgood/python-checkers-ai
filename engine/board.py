@@ -196,51 +196,102 @@ class Board:
                     moves[(end_row, end_col)] = []
         return moves
 
-    def simulate_move(self, move_path):
+    def get_all_next_board_states(self, color):
         """
-        Takes a move path and returns a new board object with that move applied.
-        This is the single source of truth for the AI's simulation.
+        This is the new authoritative generator for the AI. It yields tuples of
+        (final_move_path, final_board_state) for every possible legal move,
+        handling multi-jumps and the kinging rule internally.
         """
-        new_board = copy.deepcopy(self)
-        start_pos = move_path[0]
-        end_pos = move_path[-1]
+        valid_moves = self.get_all_valid_moves(color)
+        is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
+
+        for start_pos, end_positions in valid_moves.items():
+            for end_pos in end_positions:
+                path = [start_pos, end_pos]
+                
+                if is_jump:
+                    yield from self._get_jump_sequences(path)
+                else:
+                    simulated_board = self._simulate_move_sequence(path)
+                    yield path, simulated_board
+
+    def _get_jump_sequences(self, current_path):
+        """
+        A recursive generator that explores multi-jump paths from a starting path.
+        """
+        last_pos = current_path[-1]
         
-        piece_to_move = new_board.get_piece(start_pos[0], start_pos[1])
-        if piece_to_move == 0: return new_board
+        temp_board = self._simulate_move_sequence(current_path)
+        
+        if temp_board.turn != self.turn:
+            yield current_path, temp_board
+            return
 
-        was_king_before_move = piece_to_move.king
+        piece = temp_board.get_piece(last_pos[0], last_pos[1])
+        if piece == 0:
+            yield current_path, temp_board
+            return
+        
+        more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
 
-        captured = []
-        # Reconstruct the full list of captured pieces from the path
-        for i in range(len(move_path) - 1):
-            r1, c1 = move_path[i]
-            r2, c2 = move_path[i+1]
-            if abs(r1 - r2) == 2:
-                mid_row, mid_col = (r1 + r2) // 2, (c1 + c2) // 2
-                captured_piece = new_board.get_piece(mid_row, mid_col)
-                if captured_piece != 0:
-                    captured.append(captured_piece)
+        if not more_jumps:
+            yield current_path, temp_board
+            return
+        
+        for next_pos in more_jumps:
+            new_path = current_path + [next_pos]
+            yield from self._get_jump_sequences(new_path)
 
-        new_board.move(piece_to_move, end_pos[0], end_pos[1])
-        if captured:
-            new_board._remove(captured)
+
+    def _simulate_move_sequence(self, path):
+        """
+        Simulates a full move sequence (slide or multi-jump) and returns the
+        final board state. This is a helper for the main AI generator.
+        """
+        temp_board = copy.deepcopy(self)
+        
+        start_pos = path[0]
+        piece = temp_board.get_piece(start_pos[0], start_pos[1])
+        if piece == 0: return temp_board
+
+        was_king = piece.king
+        
+        captured_in_sequence = []
+        for i in range(len(path) - 1):
+            p_start = path[i]
+            p_end = path[i+1]
             
-        is_now_king = piece_to_move.king
-        promoted_this_move = not was_king_before_move and is_now_king
+            # This logic is for jumps only
+            if abs(p_start[0] - p_end[0]) == 2:
+                mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
+                captured_piece = temp_board.get_piece(mid_row, mid_col)
+                if captured_piece != 0:
+                    captured_in_sequence.append(captured_piece)
 
-        # --- KINGING RULE FIX ---
-        # If a piece was just promoted, its turn ends immediately.
-        if promoted_this_move:
-            new_board.turn = WHITE if self.turn == RED else RED
-            return new_board
+        final_pos = path[-1]
+        temp_board.move(piece, final_pos[0], final_pos[1])
+        temp_board._remove(captured_in_sequence)
+        
+        is_now_king = piece.king
+        promoted = not was_king and is_now_king
 
-        # If it was a jump but no promotion, check for more jumps
-        if captured:
-            more_jumps = new_board._get_moves_for_piece(piece_to_move, find_jumps=True)
+        # --- FINAL AI TURN FIX ---
+        # The turn only flips if the sequence is over.
+        # A sequence ends if:
+        # 1. It was a slide (not a jump).
+        # 2. It was a jump, but the piece got kinged.
+        # 3. It was a jump, but there are no more jumps from the new position.
+
+        is_jump = len(captured_in_sequence) > 0
+
+        if promoted:
+            temp_board.turn = WHITE if temp_board.turn == RED else RED
+        elif is_jump:
+            more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
             if not more_jumps:
-                new_board.turn = WHITE if self.turn == RED else RED
-        else: # It was a simple slide
-            new_board.turn = WHITE if self.turn == RED else RED
-
-        return new_board
+                temp_board.turn = WHITE if temp_board.turn == RED else RED
+        else: # It was a slide
+            temp_board.turn = WHITE if temp_board.turn == RED else RED
+                
+        return temp_board
 
