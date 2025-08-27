@@ -7,11 +7,11 @@ import copy
 import time
 import pickle
 import os
-import glob # <--- Add this import
+import glob
 from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_AI_DEPTH
 import engine.constants as constants
-from game_states import Button # Assuming Button is in game_states
+from game_states import Button
 from engine.search import get_ai_move_analysis
 from engine.evaluation import evaluate_board
 
@@ -49,8 +49,8 @@ class CheckersGame:
         self.ai_top_moves = []
         self.ai_depth = DEFAULT_AI_DEPTH
 
-        # --- THREADED LOADING (REVISED) ---
         status_queue.put("Loading Opening Book...")
+        # Use a higher protocol for pickle for a potential speed increase
         self.opening_book = self._load_database('resources/custom_book.pkl')
         
         status_queue.put("Loading Endgame Tablebases...")
@@ -58,7 +58,6 @@ class CheckersGame:
         
         status_queue.put("Finalizing...")
         time.sleep(0.5)
-        # --- END REVISION ---
         
         self._create_buttons()
         self._update_valid_moves()
@@ -67,6 +66,7 @@ class CheckersGame:
         """Loads a single pickled database file."""
         if os.path.exists(file_path):
             try:
+                # Using protocol=4 can be faster for large files
                 with open(file_path, 'rb') as f:
                     logger.info(f"Loading database: {file_path}")
                     return pickle.load(f)
@@ -83,7 +83,6 @@ class CheckersGame:
         """
         master_db = {}
         db_path = 'resources'
-        # Use glob to find all files matching the pattern 'db_*.pkl'
         db_files = glob.glob(os.path.join(db_path, 'db_*.pkl'))
         
         for i, file_path in enumerate(db_files):
@@ -95,8 +94,6 @@ class CheckersGame:
         
         logger.info(f"Successfully merged {len(db_files)} endgame databases into a single table with {len(master_db)} positions.")
         return master_db
-
-    # --- Button Callbacks and UI Toggles ---
 
     def _create_buttons(self):
         self.buttons = []
@@ -115,8 +112,7 @@ class CheckersGame:
             ("Force AI Move", self.force_ai_move, y_start - 210)
         ]
         for text, callback, y_pos in button_defs:
-            button = Button(text, (panel_x, y_pos), (button_width, button_height), callback)
-            self.buttons.append(button)
+            self.buttons.append(Button(text, (panel_x, y_pos), (button_width, button_height), callback))
         
         depth_btn_y = y_start - 245
         self.buttons.append(Button("-", (panel_x, depth_btn_y), (30, 30), self.decrease_ai_depth))
@@ -142,8 +138,6 @@ class CheckersGame:
         if self.ai_depth > 5: self.ai_depth -= 1
         logger.info(f"AI depth set to {self.ai_depth}")
     
-    # --- Core Game State Management ---
-
     def reset_game(self):
         self.board = Board()
         self.turn = self.board.turn
@@ -154,7 +148,8 @@ class CheckersGame:
         self._update_valid_moves()
 
     def undo_move(self):
-        if not self.history: return
+        # Prevent undoing if AI is thinking or game is over
+        if self.ai_is_thinking or self.done or not self.history: return
         self.board = self.history.pop()
         if self.move_history: self.move_history.pop()
         self.turn = self.board.turn
@@ -168,12 +163,10 @@ class CheckersGame:
         logger.info("Export to PDN button clicked (not implemented).")
 
     def force_ai_move(self):
-        if self.turn == self.player_color and not self.ai_is_thinking:
+        if self.turn == self.player_color and not self.ai_is_thinking and not self.done:
             logger.info(f"Player forcing AI to calculate move for {constants.PLAYER_NAMES[self.player_color]}")
             self.start_ai_turn(force_color=self.player_color)
     
-    # --- AI Turn Management ---
-
     def start_ai_turn(self, force_color=None):
         if self.ai_thread and self.ai_thread.is_alive(): return
         
@@ -186,17 +179,14 @@ class CheckersGame:
         self.ai_thread.start()
 
     def run_ai_calculation(self, color_to_move):
-        """
-        This function now checks the consolidated databases before starting
-        the main minimax search.
-        """
         try:
             board_hash = self.board.hash
             
             # 1. Check Opening Book
             if self.board.red_left + self.board.white_left > 20 and board_hash in self.opening_book:
-                logger.info("AI found move in opening book.")
                 move_path = self.opening_book[board_hash]
+                # --- DATABASE LOGGING ---
+                logger.info(f"DATABASE: AI found move in opening book: {self._format_move_path(move_path)}")
                 _, top_moves = get_ai_move_analysis(self.board, 1, color_to_move, evaluate_board)
                 self.ai_move_queue.put(move_path)
                 if top_moves:
@@ -205,12 +195,12 @@ class CheckersGame:
                 return
 
             # 2. Check Endgame Tablebase
-            # The piece count condition can be adjusted
             if self.board.red_left + self.board.white_left <= 7 and board_hash in self.endgame_db:
-                logger.info("AI found move in endgame database.")
                 db_entry = self.endgame_db[board_hash]
                 move_path = db_entry['move']
                 score = db_entry['score']
+                # --- DATABASE LOGGING ---
+                logger.info(f"DATABASE: AI found move in endgame tablebase: {self._format_move_path(move_path)} with score {score}")
                 self.ai_move_queue.put(move_path)
                 self.positional_score = score
                 self.ai_top_moves = [(score, move_path)]
@@ -233,15 +223,17 @@ class CheckersGame:
             if self.ai_top_moves:
                 logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
 
-    # --- Player Turn and Move Logic ---
-    
     def _update_valid_moves(self):
-        self.valid_moves = self.board.get_all_valid_moves(self.turn)
-        if not self.valid_moves and not self.done:
+        # --- GAME OVER FIX ---
+        # Check for a winner before trying to get moves
+        winner = self.board.winner()
+        if winner:
             self.done = True
-            winner = RED if self.turn == WHITE else WHITE
-            logger.info(f"Game over! {constants.PLAYER_NAMES[winner]} wins as opponent has no moves.")
-
+            logger.info(f"Game over! {constants.PLAYER_NAMES[winner]} wins.")
+            self.valid_moves = {} # No more valid moves
+        else:
+            self.valid_moves = self.board.get_all_valid_moves(self.turn)
+    
     def _change_turn(self):
         self.selected_piece = None
         self.turn = RED if self.turn == WHITE else WHITE
@@ -292,13 +284,15 @@ class CheckersGame:
         self._change_turn()
 
     def _handle_click(self, pos):
-        if self.turn != self.player_color or self.done: return
+        # --- GAME OVER FIX ---
+        # Ignore clicks if the game is over or it's not the player's turn
+        if self.done or self.turn != self.player_color: return
+        
         if pos[0] < BOARD_SIZE:
             row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
             if self.board_flipped: row, col = ROWS - 1 - row, COLS - 1 - col
             self._select(row, col)
     
-    # --- Drawing and Main Loop ---
     def _format_move_path(self, path):
         if not path: return ""
         formatted_moves = []
@@ -335,8 +329,18 @@ class CheckersGame:
         panel_x = BOARD_SIZE
         panel_width = self.screen.get_width() - BOARD_SIZE
         pygame.draw.rect(self.screen, constants.COLOR_BG, (panel_x, 0, panel_width, self.screen.get_height()))
-        turn_text = self.large_font.render(f"{constants.PLAYER_NAMES[self.turn]}'s Turn", True, constants.COLOR_TEXT)
+        
+        # --- GAME OVER FIX ---
+        # Display winner text instead of turn text if game is done
+        if self.done:
+            winner_color = WHITE if self.turn == RED else RED
+            turn_text_str = f"{constants.PLAYER_NAMES[winner_color]} Wins!"
+        else:
+            turn_text_str = f"{constants.PLAYER_NAMES[self.turn]}'s Turn"
+
+        turn_text = self.large_font.render(turn_text_str, True, constants.COLOR_TEXT)
         self.screen.blit(turn_text, (panel_x + 10, 10))
+        
         if self.ai_is_thinking:
             thinking_text = self.font.render("AI is Thinking...", True, (255, 255, 0))
             self.screen.blit(thinking_text, (panel_x + 10, 35))
@@ -379,21 +383,20 @@ class CheckersGame:
                     center_pos = (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2)
                     pygame.draw.circle(self.screen, (0, 255, 0), center_pos, 15)
         
-        if self.done:
-            winner = WHITE if self.turn == RED else RED
-            end_text = self.font.render(f"{constants.PLAYER_NAMES[winner]} Wins!", True, (0, 255, 0), constants.COLOR_BG)
-            text_rect = end_text.get_rect(center=(BOARD_SIZE / 2, BOARD_SIZE / 2))
-            self.screen.blit(end_text, text_rect)
-
     def update(self):
+        # --- GAME OVER FIX ---
+        # If the game is done, do nothing.
+        if self.done:
+            return
+
         try:
             best_move_path = self.ai_move_queue.get_nowait()
             logger.debug(f"GAME UPDATE: Move received from queue: {best_move_path}")
             if isinstance(best_move_path, list) and best_move_path:
                 self._apply_move_sequence(best_move_path)
             elif isinstance(best_move_path, list) and not best_move_path:
-                logger.info(f"AI ({constants.PLAYER_NAMES[self.ai_color]}) has no valid moves. Player wins!")
-                self.done = True
+                # This case is now handled by board.winner()
+                pass
             elif best_move_path is None:
                 logger.warning("AI calculation failed and returned None. Turn will be skipped.")
         except queue.Empty:
