@@ -10,7 +10,6 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
     """
     is_maximizing = ai_color == WHITE
     
-    # Use the new, simplified generator to get possible first moves
     possible_moves = list(get_all_moves(board, ai_color))
 
     if not possible_moves:
@@ -40,81 +39,81 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     The core recursive search algorithm.
     """
     if depth == 0 or board.winner() is not None:
-        # The evaluation function needs the original board context for piece counts
         return evaluate_func(board), []
 
     best_path = []
     color_to_move = WHITE if maximizing_player else RED
     
-    # --- SIMPLIFIED LOGIC ---
-    # We now get all possible resulting board states directly
-    for path, move_board in get_all_moves(board, color_to_move):
-        evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, not maximizing_player, evaluate_func)
-        
-        if maximizing_player:
-            if evaluation > alpha:
-                alpha = evaluation
+    if maximizing_player:
+        max_eval = float('-inf')
+        for path, move_board in get_all_moves(board, color_to_move):
+            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
+            if evaluation > max_eval:
+                max_eval = evaluation
                 best_path = path + subsequent_path
-        else:
-            if evaluation < beta:
-                beta = evaluation
+            alpha = max(alpha, evaluation)
+            if beta <= alpha:
+                break
+        return max_eval, best_path
+    else: # Minimizing player
+        min_eval = float('inf')
+        for path, move_board in get_all_moves(board, color_to_move):
+            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
+            if evaluation < min_eval:
+                min_eval = evaluation
                 best_path = path + subsequent_path
-        
-        if beta <= alpha:
-            break
-            
-    eval_to_return = alpha if maximizing_player else beta
-    return eval_to_return, best_path
+            beta = min(beta, evaluation)
+            if beta <= alpha:
+                break
+        return min_eval, best_path
 
 def get_all_moves(board, color):
     """
     A generator that yields all possible next board states for a given color.
-    This is now much simpler and relies on the Board class for all game logic.
     """
-    # Get all valid starting moves from the authoritative board function
     valid_moves = board.get_all_valid_moves(color)
     
     for start_pos, end_positions in valid_moves.items():
         for end_pos in end_positions:
             move_path = [start_pos, end_pos]
             
-            # Use the new authoritative simulation function
-            temp_board = board.simulate_move(move_path)
-            
-            # If the move was a jump, we need to check for multi-jumps
             is_jump = abs(start_pos[0] - end_pos[0]) == 2
             if is_jump:
-                # The turn doesn't change after the first jump, so we check for more
-                # jumps for the same color from the new board state.
-                yield from _get_jump_sequences(temp_board, move_path)
+                yield from _get_jump_sequences(board, move_path)
             else:
-                # If it was a simple slide, the turn is over.
+                temp_board = board.simulate_move(move_path)
                 yield move_path, temp_board
 
 def _get_jump_sequences(board, path):
     """
     A recursive generator that explores multi-jump paths.
     """
-    current_pos = path[-1]
-    piece = board.get_piece(current_pos[0], current_pos[1])
+    # --- AI LOGIC FIX ---
+    # Always simulate the path from the original board to get the current state
+    simulated_board = board.simulate_move(path)
     
-    if piece == 0:
-        # This can happen if a piece jumps off the board to be kinged
-        yield path, board
+    # If the turn has changed, it means the sequence ended (e.g., by kinging)
+    if simulated_board.turn != board.turn:
+        yield path, simulated_board
         return
 
-    # Check for more jumps from the current position
-    more_jumps = board._get_moves_for_piece(piece, find_jumps=True)
+    current_pos = path[-1]
+    piece = simulated_board.get_piece(current_pos[0], current_pos[1])
+    
+    if piece == 0:
+        yield path, simulated_board
+        return
+
+    more_jumps = simulated_board._get_moves_for_piece(piece, find_jumps=True)
 
     # Base case: if there are no more jumps, this sequence is complete.
     if not more_jumps:
-        yield path, board
+        yield path, simulated_board
         return
 
-    # Recursive step: for each available jump, create a new state and recurse.
+    # Recursive step: for each available jump, explore the new path
     for next_pos in more_jumps:
         new_path = path + [next_pos]
-        # Create the next board state by simulating this next jump
-        next_board = board.simulate_move([current_pos, next_pos])
-        yield from _get_jump_sequences(next_board, new_path)
+        # IMPORTANT: Recurse using the original board, but the *new, longer* path
+        yield from _get_jump_sequences(board, new_path)
 
