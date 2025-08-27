@@ -257,12 +257,12 @@ class Board:
         was_king = piece.king
         
         captured_in_sequence = []
-        for i in range(len(path) - 1):
-            p_start = path[i]
-            p_end = path[i+1]
-            
-            # This logic is for jumps only
-            if abs(p_start[0] - p_end[0]) == 2:
+        is_jump = False
+        if len(path) > 1 and abs(path[0][0] - path[1][0]) == 2:
+            is_jump = True
+            for i in range(len(path) - 1):
+                p_start = path[i]
+                p_end = path[i+1]
                 mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
                 captured_piece = temp_board.get_piece(mid_row, mid_col)
                 if captured_piece != 0:
@@ -270,28 +270,32 @@ class Board:
 
         final_pos = path[-1]
         temp_board.move(piece, final_pos[0], final_pos[1])
-        temp_board._remove(captured_in_sequence)
+        if captured_in_sequence:
+            temp_board._remove(captured_in_sequence)
         
         is_now_king = piece.king
         promoted = not was_king and is_now_king
 
-        # --- FINAL AI TURN FIX ---
-        # The turn only flips if the sequence is over.
-        # A sequence ends if:
-        # 1. It was a slide (not a jump).
-        # 2. It was a jump, but the piece got kinged.
-        # 3. It was a jump, but there are no more jumps from the new position.
-
-        is_jump = len(captured_in_sequence) > 0
-
+        turn_should_flip = False
         if promoted:
-            temp_board.turn = WHITE if temp_board.turn == RED else RED
+            turn_should_flip = True
         elif is_jump:
             more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
             if not more_jumps:
-                temp_board.turn = WHITE if temp_board.turn == RED else RED
+                turn_should_flip = True
         else: # It was a slide
-            temp_board.turn = WHITE if temp_board.turn == RED else RED
+            turn_should_flip = True
+        
+        # --- DEBUGGING LOG ---
+        original_turn = "W" if self.turn == WHITE else "R"
+        sim_start_turn = "W" if temp_board.turn == WHITE else "R"
+        
+        if turn_should_flip:
+            # CRITICAL FIX: Base the turn flip on the *original* board's turn
+            temp_board.turn = WHITE if self.turn == RED else RED
+        
+        sim_end_turn = "W" if temp_board.turn == WHITE else "R"
+        logger.debug(f"SIM: Path {path}, Orig Turn: {original_turn}, Sim Start: {sim_start_turn}, Flip: {turn_should_flip}, Final Turn: {sim_end_turn}")
                 
         return temp_board
 

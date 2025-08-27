@@ -22,8 +22,9 @@ class CheckersGame:
     The main game state manager. It handles the game loop, player input,
     AI turn management via threading, and drawing everything to the screen.
     """
-    def __init__(self, screen, player_color_str, status_queue):
+    def __init__(self, screen, player_color_str, status_queue, args): # Add args here
         self.screen = screen
+        self.args = args # Store args
         self.board = Board()
         self.player_color = WHITE if player_color_str == 'white' else RED
         self.ai_color = RED if self.player_color == WHITE else WHITE
@@ -49,12 +50,17 @@ class CheckersGame:
         self.ai_top_moves = []
         self.ai_depth = DEFAULT_AI_DEPTH
 
+        # --- DATABASE LOADING ---
         status_queue.put("Loading Opening Book...")
-        # Use a higher protocol for pickle for a potential speed increase
         self.opening_book = self._load_database('resources/custom_book.pkl')
         
-        status_queue.put("Loading Endgame Tablebases...")
-        self.endgame_db = self._load_and_merge_databases(status_queue)
+        # --- CONDITIONAL LOADING ---
+        self.endgame_db = {} # Default to empty
+        if not self.args.no_db:
+            status_queue.put("Loading Endgame Tablebases...")
+            self.endgame_db = self._load_and_merge_databases(status_queue)
+        else:
+            logger.warning("Skipping endgame database load due to --no-db flag.")
         
         status_queue.put("Finalizing...")
         time.sleep(0.5)
@@ -66,7 +72,6 @@ class CheckersGame:
         """Loads a single pickled database file."""
         if os.path.exists(file_path):
             try:
-                # Using protocol=4 can be faster for large files
                 with open(file_path, 'rb') as f:
                     logger.info(f"Loading database: {file_path}")
                     return pickle.load(f)
@@ -148,7 +153,6 @@ class CheckersGame:
         self._update_valid_moves()
 
     def undo_move(self):
-        # Prevent undoing if AI is thinking or game is over
         if self.ai_is_thinking or self.done or not self.history: return
         self.board = self.history.pop()
         if self.move_history: self.move_history.pop()
@@ -182,10 +186,8 @@ class CheckersGame:
         try:
             board_hash = self.board.hash
             
-            # 1. Check Opening Book
             if self.board.red_left + self.board.white_left > 20 and board_hash in self.opening_book:
                 move_path = self.opening_book[board_hash]
-                # --- DATABASE LOGGING ---
                 logger.info(f"DATABASE: AI found move in opening book: {self._format_move_path(move_path)}")
                 _, top_moves = get_ai_move_analysis(self.board, 1, color_to_move, evaluate_board)
                 self.ai_move_queue.put(move_path)
@@ -194,19 +196,17 @@ class CheckersGame:
                     self.ai_top_moves = top_moves
                 return
 
-            # 2. Check Endgame Tablebase
-            if self.board.red_left + self.board.white_left <= 7 and board_hash in self.endgame_db:
+            # Only check endgame DB if it was loaded
+            if self.endgame_db and self.board.red_left + self.board.white_left <= 8 and board_hash in self.endgame_db:
                 db_entry = self.endgame_db[board_hash]
                 move_path = db_entry['move']
                 score = db_entry['score']
-                # --- DATABASE LOGGING ---
                 logger.info(f"DATABASE: AI found move in endgame tablebase: {self._format_move_path(move_path)} with score {score}")
                 self.ai_move_queue.put(move_path)
                 self.positional_score = score
                 self.ai_top_moves = [(score, move_path)]
                 return
             
-            # 3. If no database hit, proceed with the normal minimax search
             best_move_path, top_moves = get_ai_move_analysis(self.board, self.ai_depth, color_to_move, evaluate_board)
             
             if best_move_path:
@@ -224,13 +224,11 @@ class CheckersGame:
                 logger.info(f"AI calculation completed. Best score: {self.positional_score:.2f}")
 
     def _update_valid_moves(self):
-        # --- GAME OVER FIX ---
-        # Check for a winner before trying to get moves
         winner = self.board.winner()
         if winner:
             self.done = True
             logger.info(f"Game over! {constants.PLAYER_NAMES[winner]} wins.")
-            self.valid_moves = {} # No more valid moves
+            self.valid_moves = {}
         else:
             self.valid_moves = self.board.get_all_valid_moves(self.turn)
     
@@ -284,8 +282,6 @@ class CheckersGame:
         self._change_turn()
 
     def _handle_click(self, pos):
-        # --- GAME OVER FIX ---
-        # Ignore clicks if the game is over or it's not the player's turn
         if self.done or self.turn != self.player_color: return
         
         if pos[0] < BOARD_SIZE:
@@ -330,8 +326,6 @@ class CheckersGame:
         panel_width = self.screen.get_width() - BOARD_SIZE
         pygame.draw.rect(self.screen, constants.COLOR_BG, (panel_x, 0, panel_width, self.screen.get_height()))
         
-        # --- GAME OVER FIX ---
-        # Display winner text instead of turn text if game is done
         if self.done:
             winner_color = WHITE if self.turn == RED else RED
             turn_text_str = f"{constants.PLAYER_NAMES[winner_color]} Wins!"
@@ -384,8 +378,6 @@ class CheckersGame:
                     pygame.draw.circle(self.screen, (0, 255, 0), center_pos, 15)
         
     def update(self):
-        # --- GAME OVER FIX ---
-        # If the game is done, do nothing.
         if self.done:
             return
 
@@ -395,7 +387,6 @@ class CheckersGame:
             if isinstance(best_move_path, list) and best_move_path:
                 self._apply_move_sequence(best_move_path)
             elif isinstance(best_move_path, list) and not best_move_path:
-                # This case is now handled by board.winner()
                 pass
             elif best_move_path is None:
                 logger.warning("AI calculation failed and returned None. Turn will be skipped.")
