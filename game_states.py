@@ -123,7 +123,6 @@ class PlayerSelectionScreen(BaseState):
 
     def handle_events(self, events, app=None):
         for event in events:
-            # Only handle clicks if a selection has NOT been made yet
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.selection_made:
                 for button in self.buttons:
                     if button.is_clicked(event.pos):
