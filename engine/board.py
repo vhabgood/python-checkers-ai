@@ -1,6 +1,7 @@
 # engine/board.py
 import pygame
 import logging
+import random # <--- Add this import
 from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE
 from .piece import Piece
 
@@ -15,11 +16,18 @@ class Board:
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
-        self.turn = RED # Red always starts in checkers
+        self.turn = RED
         self.create_board()
-        logger.debug("Board initialized.")
         
-            # --- ZOBRIST HASHING ---
+        # --- ZOBRIST HASHING INITIALIZATION ---
+        # 1. Create the table of random numbers for hashing
+        self.zobrist_table = self._init_zobrist()
+        # 2. Compute the initial hash for the starting board position
+        self.hash = self._compute_hash()
+        # --- END INITIALIZATION ---
+
+        logger.debug(f"Board initialized with Zobrist hash: {self.hash}")
+        
     def _init_zobrist(self):
         """
         Initializes the Zobrist table with random 64-bit numbers for each
@@ -31,8 +39,10 @@ class Board:
             for c in range(COLS):
                 for color in [RED, WHITE]:
                     for is_king in [True, False]:
-                        table[(r, c, color, is_king)] = random.getrandbits(64)
-        # Add a value for whose turn it is
+                        # The key is a tuple representing the piece's state
+                        key = (r, c, color, is_king)
+                        table[key] = random.getrandbits(64)
+        # Add a special value to hash for whose turn it is
         table['turn'] = random.getrandbits(64)
         return table
 
@@ -45,12 +55,14 @@ class Board:
         for r in range(ROWS):
             for c in range(COLS):
                 piece = self.get_piece(r, c)
-                if piece != 0:
-                    h ^= self.zobrist_table[(r, c, piece.color, piece.king)]
+                if piece != 0: # If a piece is on the square
+                    key = (r, c, piece.color, piece.king)
+                    h ^= self.zobrist_table[key]
+        # XOR with the turn value if it's White's turn to start
+        # (Assuming Red starts, so we only do this if White starts)
         if self.turn == WHITE:
             h ^= self.zobrist_table['turn']
         return h
-    # --- END ZOBRIST HASHING ---
 
     def create_board(self):
         """
@@ -83,7 +95,8 @@ class Board:
         """
         # --- HASH UPDATE ---
         # 1. XOR out the piece from its old position
-        self.hash ^= self.zobrist_table[(piece.row, piece.col, piece.color, piece.king)]
+        old_key = (piece.row, piece.col, piece.color, piece.king)
+        self.hash ^= self.zobrist_table[old_key]
         # ---
         
         self.board[piece.row][piece.col] = 0
@@ -92,18 +105,16 @@ class Board:
         was_king = piece.king
         piece.move(row, col)
 
-        if row == ROWS - 1 or row == 0:
-            if not piece.king:
-                piece.make_king()
-                if piece.color == WHITE: self.white_kings += 1
-                else: self.red_kings += 1
+        # Check for promotion to king
+        if (row == ROWS - 1 or row == 0) and not was_king:
+            piece.make_king()
+            if piece.color == WHITE: self.white_kings += 1
+            else: self.red_kings += 1
         
         # --- HASH UPDATE ---
-        # 2. XOR in the piece at its new position, considering if it became a king
-        if not was_king and piece.king:
-            self.hash ^= self.zobrist_table[(row, col, piece.color, True)]
-        else:
-            self.hash ^= self.zobrist_table[(row, col, piece.color, piece.king)]
+        # 2. XOR in the piece at its new position
+        new_key = (row, col, piece.color, piece.king)
+        self.hash ^= self.zobrist_table[new_key]
         # ---
 
     def _remove(self, pieces):
@@ -114,7 +125,8 @@ class Board:
             if piece is not None and piece != 0:
                 # --- HASH UPDATE ---
                 # XOR out the captured piece from its position
-                self.hash ^= self.zobrist_table[(piece.row, piece.col, piece.color, piece.king)]
+                key = (piece.row, piece.col, piece.color, piece.king)
+                self.hash ^= self.zobrist_table[key]
                 # ---
                 self.board[piece.row][piece.col] = 0
                 if piece.color == RED: self.red_left -= 1
@@ -137,23 +149,17 @@ class Board:
         """
         The board's evaluation function. Provides a score for the current
         board state, used by the AI to determine the best move.
-        A positive score favors White, a negative score favors Red.
         """
         return (self.white_left - self.red_left) + (self.white_kings * 0.5 - self.red_kings * 0.5)
 
     def winner(self):
         """
-        Determines if there is a winner by checking the number of pieces left
-        or if a player has no more valid moves.
+        Determines if there is a winner.
         """
-        if self.red_left <= 0:
-            return WHITE
-        elif self.white_left <= 0:
-            return RED
-        
+        if self.red_left <= 0: return WHITE
+        if self.white_left <= 0: return RED
         if not self.get_all_valid_moves(self.turn):
             return WHITE if self.turn == RED else RED
-        
         return None
 
     def draw(self, win, font, show_nums, flipped):
@@ -163,8 +169,9 @@ class Board:
             for col in range(COLS):
                 piece = self.board[row][col]
                 if piece != 0:
-                    draw_row, draw_col = (ROWS - 1 - row, COLS - 1 - col) if flipped else (row, col)
-                    piece.draw(win) # Pieces draw themselves based on their internal x, y
+                    # The piece draws itself based on its internal pixel coords,
+                    # which are updated when the piece moves.
+                    piece.draw(win)
         if show_nums:
             self._draw_board_numbers(win, font, flipped)
 
@@ -177,52 +184,11 @@ class Board:
                     text = font.render(str(num), True, (200,200,200))
                     draw_r, draw_c = (ROWS - 1 - r, COLS - 1 - c) if flipped else (r, c)
                     win.blit(text, (draw_c * SQUARE_SIZE + 5, draw_r * SQUARE_SIZE + 5))
-                    
-                    # ADD THIS ENTIRE BLOCK OF NEW FUNCTIONS TO board.py
-
-    def _find_moves(self, row, col, color, is_king, step):
-        """
-        A helper function that explores possible moves (slides or jumps) for a piece.
-        'step' determines the move type: 1 for a slide, 2 for a jump.
-        """
-        moves = {}
-        directions = []
-        
-        if color == RED or is_king:
-            directions.extend([(1, -1), (1, 1)]) # Down-left, Down-right
-        if color == WHITE or is_king:
-            directions.extend([(-1, -1), (-1, 1)]) # Up-left, Up-right
-            
-        for dr, dc in directions:
-            end_row, end_col = row + dr * step, col + dc * step
-            
-            if not (0 <= end_row < ROWS and 0 <= end_col < COLS):
-                continue # Skip moves that go off the board
-
-            dest_square = self.get_piece(end_row, end_col)
-            
-            # --- Slide Logic (step=1) ---
-            if step == 1:
-                if dest_square == 0:
-                    moves[(end_row, end_col)] = [] # Empty list for no capture
-            
-            # --- Jump Logic (step=2) ---
-            elif step == 2:
-                mid_row, mid_col = row + dr, col + dc
-                mid_square = self.get_piece(mid_row, mid_col)
-                
-                # A jump is valid if the destination is empty and the middle has an opponent piece
-                if dest_square == 0 and mid_square != 0 and mid_square.color != color:
-                    moves[(end_row, end_col)] = [mid_square] # List contains the captured piece
-                    
-        return moves
-   
-# --- New, Final Move Generation Logic ---
 
     def get_all_valid_moves(self, color):
         """
         The single authoritative function to get all valid moves for a color.
-        It correctly enforces the mandatory jump rule for the entire team.
+        It correctly enforces the mandatory jump rule.
         """
         moves = {}
         has_jumps = False
@@ -238,7 +204,7 @@ class Board:
         if has_jumps:
             return moves
 
-        # If no jumps were found for any piece, then find all slides.
+        # If no jumps were found, then find all slides.
         for piece in self.get_all_pieces(color):
             slides = self._get_moves_for_piece(piece, find_jumps=False)
             if slides:
@@ -274,13 +240,7 @@ class Board:
                     moves[(end_row, end_col)] = [mid_square]
             else: # Find slides
                 if dest_square == 0:
-                    moves[(end_row, end_col)] = [] # Empty list for no capture
+                    moves[(end_row, end_col)] = []
                     
         return moves
 
-    
-
-
-
-        
- 
