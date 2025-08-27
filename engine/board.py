@@ -196,106 +196,57 @@ class Board:
                     moves[(end_row, end_col)] = []
         return moves
 
-    def get_all_next_board_states(self, color):
+    def apply_move(self, path):
         """
-        This is the new authoritative generator for the AI. It yields tuples of
-        (final_move_path, final_board_state) for every possible legal move,
-        handling multi-jumps and the kinging rule internally.
-        """
-        valid_moves = self.get_all_valid_moves(color)
-        is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
-
-        for start_pos, end_positions in valid_moves.items():
-            for end_pos in end_positions:
-                path = [start_pos, end_pos]
-                
-                if is_jump:
-                    yield from self._get_jump_sequences(path)
-                else:
-                    simulated_board = self._simulate_move_sequence(path)
-                    yield path, simulated_board
-
-    def _get_jump_sequences(self, current_path):
-        """
-        A recursive generator that explores multi-jump paths from a starting path.
-        """
-        last_pos = current_path[-1]
-        
-        temp_board = self._simulate_move_sequence(current_path)
-        
-        if temp_board.turn != self.turn:
-            yield current_path, temp_board
-            return
-
-        piece = temp_board.get_piece(last_pos[0], last_pos[1])
-        if piece == 0:
-            yield current_path, temp_board
-            return
-        
-        more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
-
-        if not more_jumps:
-            yield current_path, temp_board
-            return
-        
-        for next_pos in more_jumps:
-            new_path = current_path + [next_pos]
-            yield from self._get_jump_sequences(new_path)
-
-
-    def _simulate_move_sequence(self, path):
-        """
-        Simulates a full move sequence (slide or multi-jump) and returns the
-        final board state. This is a helper for the main AI generator.
+        Applies a move sequence to a copy of the board and returns the new board state.
+        This is the single, authoritative simulation function for the AI.
         """
         temp_board = copy.deepcopy(self)
-        
         start_pos = path[0]
+        end_pos = path[-1]
         piece = temp_board.get_piece(start_pos[0], start_pos[1])
-        if piece == 0: return temp_board
+
+        if piece == 0:
+            return temp_board
 
         was_king = piece.king
+        is_jump = abs(start_pos[0] - end_pos[0]) == 2
         
-        captured_in_sequence = []
-        is_jump = False
-        if len(path) > 1 and abs(path[0][0] - path[1][0]) == 2:
-            is_jump = True
+        # Move the piece and remove any captured pieces
+        if is_jump:
+            captured_pieces = []
             for i in range(len(path) - 1):
                 p_start = path[i]
                 p_end = path[i+1]
                 mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
-                captured_piece = temp_board.get_piece(mid_row, mid_col)
-                if captured_piece != 0:
-                    captured_in_sequence.append(captured_piece)
-
-        final_pos = path[-1]
-        temp_board.move(piece, final_pos[0], final_pos[1])
-        if captured_in_sequence:
-            temp_board._remove(captured_in_sequence)
+                captured = temp_board.get_piece(mid_row, mid_col)
+                if captured:
+                    captured_pieces.append(captured)
+            temp_board._remove(captured_pieces)
         
-        is_now_king = piece.king
-        promoted = not was_king and is_now_king
+        temp_board.move(piece, end_pos[0], end_pos[1])
+        
+        promoted = not was_king and piece.king
 
-        turn_should_flip = False
-        if promoted:
-            turn_should_flip = True
-        elif is_jump:
-            more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
-            if not more_jumps:
-                turn_should_flip = True
+        # Determine if the turn should flip
+        turn_ends = False
+        if is_jump:
+            if promoted:
+                turn_ends = True
+            else:
+                more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
+                if not more_jumps:
+                    turn_ends = True
         else: # It was a slide
-            turn_should_flip = True
-        
-        # --- DEBUGGING LOG ---
-        original_turn = "W" if self.turn == WHITE else "R"
-        sim_start_turn = "W" if temp_board.turn == WHITE else "R"
-        
-        if turn_should_flip:
-            # CRITICAL FIX: Base the turn flip on the *original* board's turn
+            turn_ends = True
+
+        if turn_ends:
             temp_board.turn = WHITE if self.turn == RED else RED
         
-        sim_end_turn = "W" if temp_board.turn == WHITE else "R"
-        logger.debug(f"SIM: Path {path}, Orig Turn: {original_turn}, Sim Start: {sim_start_turn}, Flip: {turn_should_flip}, Final Turn: {sim_end_turn}")
+        # Concise debug log
+        orig_turn = "W" if self.turn == WHITE else "R"
+        final_turn = "W" if temp_board.turn == WHITE else "R"
+        logger.debug(f"SIM: Path {path}, Orig: {orig_turn}, Flip: {turn_ends}, Final: {final_turn}")
                 
         return temp_board
 

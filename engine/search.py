@@ -10,15 +10,18 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
     """
     is_maximizing = ai_color == WHITE
     
-    # Use the new, authoritative generator from the board class
-    possible_moves = list(board.get_all_next_board_states(ai_color))
+    # Generate all possible move sequences (including multi-jumps)
+    possible_moves = list(get_all_move_sequences(board, ai_color))
 
     if not possible_moves:
         logger.debug("AI SEARCH: No possible moves found.")
         return [], []
 
     all_scored_moves = []
-    for move_path, move_board in possible_moves:
+    for move_path in possible_moves:
+        # Get the final board state for this move sequence using the authoritative function
+        move_board = board.apply_move(move_path)
+        
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
         full_path_for_display = move_path + subsequent_path
         all_scored_moves.append((score, full_path_for_display, move_path))
@@ -31,7 +34,8 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
     best_path_for_execution = all_scored_moves[0][2] 
     top_5_for_display = [(item[0], item[1]) for item in all_scored_moves[:5]]
     
-    logger.debug(f"AI SEARCH: Best path chosen for execution: {best_path_for_execution}")
+    current_turn_color = "W" if board.turn == WHITE else "R"
+    logger.debug(f"AI SEARCH (depth {depth}, {current_turn_color}): Best path chosen: {best_path_for_execution}")
 
     return best_path_for_execution, top_5_for_display
 
@@ -45,10 +49,11 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     best_path = []
     color_to_move = WHITE if maximizing_player else RED
     
+    # Initialize max_eval and min_eval
     if maximizing_player:
         max_eval = float('-inf')
-        # The generator now provides the final board state of any multi-jump sequence
-        for path, move_board in board.get_all_next_board_states(color_to_move):
+        for path in get_all_move_sequences(board, color_to_move):
+            move_board = board.apply_move(path)
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
@@ -59,7 +64,8 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         return max_eval, best_path
     else: # Minimizing player
         min_eval = float('inf')
-        for path, move_board in board.get_all_next_board_states(color_to_move):
+        for path in get_all_move_sequences(board, color_to_move):
+            move_board = board.apply_move(path)
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
@@ -68,4 +74,53 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             if beta <= alpha:
                 break
         return min_eval, best_path
+
+def get_all_move_sequences(board, color):
+    """
+    Generator that finds all possible complete move sequences (including multi-jumps)
+    and yields them as paths.
+    """
+    valid_moves = board.get_all_valid_moves(color)
+    is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
+
+    for start_pos, end_positions in valid_moves.items():
+        for end_pos in end_positions:
+            if is_jump:
+                # If jumps are possible, we must explore them recursively
+                yield from _find_jump_paths(board, [start_pos, end_pos])
+            else:
+                # Otherwise, it's just a simple slide
+                yield [start_pos, end_pos]
+
+def _find_jump_paths(board, path_so_far):
+    """
+    Recursive helper to find all possible multi-jump paths.
+    """
+    last_pos = path_so_far[-1]
+    
+    # Simulate the board state *after* the current jump in the path
+    temp_board = board.apply_move(path_so_far)
+    
+    # If the turn has flipped, the sequence is over (e.g., by kinging or no more jumps).
+    if temp_board.turn != board.turn:
+        yield path_so_far
+        return
+
+    piece = temp_board.get_piece(last_pos[0], last_pos[1])
+    if piece == 0:
+        yield path_so_far
+        return
+
+    more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
+
+    # Base case: No more jumps are possible from this position
+    if not more_jumps:
+        yield path_so_far
+        return
+    
+    # Recursive step: For each new jump, explore the longer path
+    for next_pos in more_jumps:
+        new_path = path_so_far + [next_pos]
+        # IMPORTANT: Recurse using the original board, but the *new, longer* path
+        yield from _find_jump_paths(board, new_path)
 
