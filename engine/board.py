@@ -202,16 +202,18 @@ class Board:
         """
         temp_board = copy.deepcopy(self)
         start_pos = path[0]
-        end_pos = path[-1]
         piece = temp_board.get_piece(start_pos[0], start_pos[1])
 
         if piece == 0:
             return temp_board
 
-        was_king = piece.king
-        is_jump = abs(start_pos[0] - end_pos[0]) == 2
+        # --- BUG FIX: A jump is defined by the first step in the path. ---
+        is_jump = abs(path[0][0] - path[1][0]) == 2
         
-        # Move the piece and remove any captured pieces
+        end_pos = path[-1]
+        was_king = piece.king
+        
+        # This logic is now correct because `is_jump` is correctly identified.
         if is_jump:
             captured_pieces = []
             for i in range(len(path) - 1):
@@ -240,7 +242,8 @@ class Board:
             turn_ends = True
 
         if turn_ends:
-            temp_board.turn = WHITE if self.turn == RED else RED
+            # This logic is correct as it flips the turn on the temporary board.
+            temp_board.turn = WHITE if temp_board.turn == RED else RED
         
         # Concise debug log
         orig_turn = "W" if self.turn == WHITE else "R"

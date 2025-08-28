@@ -393,16 +393,29 @@ class CheckersGame:
                     draw_row, draw_col = (ROWS - 1 - move[0], COLS - 1 - move[1]) if self.board_flipped else move
                     center_pos = (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2)
                     pygame.draw.circle(self.screen, (0, 255, 0), center_pos, 15)
-        
+
     def update(self):
         if self.done:
             return
 
         logger.debug(f"UPDATE START: Turn={constants.PLAYER_NAMES[self.turn]}, AI_Thinking={self.ai_is_thinking}")
-
         if self.turn == self.ai_color:
             try:
                 best_move_path = self.ai_move_queue.get_nowait()
+                
+                # --- START: ADD THIS VALIDATION BLOCK ---
+                if best_move_path: # Ensure the path is not empty
+                    start_pos = best_move_path[0]
+                    end_pos = best_move_path[1]
+                    # Check if the move from the AI is in the list of valid moves
+                    if start_pos not in self.valid_moves or end_pos not in self.valid_moves.get(start_pos, {}):
+                        logger.error(f"AI chose an ILLEGAL MOVE: {self._format_move_path(best_move_path)}")
+                        logger.error(f"Valid moves were: {self.valid_moves}")
+                        # If the AI makes a mistake, just end its turn.
+                        self._change_turn()
+                        return 
+                # --- END: ADD THIS VALIDATION BLOCK ---
+
                 logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
                 if isinstance(best_move_path, list):
                     self._apply_move_sequence(best_move_path)
