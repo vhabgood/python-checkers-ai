@@ -17,19 +17,23 @@ if not os.path.exists('logs'):
 log_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '_checkers_debug.log'
 log_filepath = os.path.join('logs', log_filename)
 
-# Configure the logging system
+# Set up the basic configuration to log to a file
 logging.basicConfig(
-    level=logging.DEBUG,  # Capture all levels of logs
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)-12s - %(levelname)-8s - %(message)s',
-    filename=log_filepath,  # Log to the specified file
-    filemode='w'  # Overwrite the log file each time
+    filename=log_filepath,
+    filemode='w',
+    # CRITICAL CHANGE: Force all loggers to use this configuration
+    force=True 
 )
-# Also, create a handler to print INFO level messages and above to the console
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(levelname)-8s - %(message)s')
-console_handler.setFormatter(formatter)
-logging.getLogger('').addHandler(console_handler)
+
+# Get the root logger and remove any other handlers to ensure no console output
+root_logger = logging.getLogger('')
+for handler in root_logger.handlers[1:]:
+    root_logger.removeHandler(handler) # This removes the default console handler
+
+logger = logging.getLogger(__name__)
+logger.info(f"Logging initialized. All output will be sent to: {log_filepath}")
 
 logging.info(f"Logging initialized. Log file at: {log_filepath}")
 # You can now get logger instances in other files, and they will inherit this config
