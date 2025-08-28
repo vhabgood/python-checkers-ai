@@ -272,32 +272,43 @@ class CheckersGame:
             logger.warning(f"Attempted to move a piece from an empty square: {path[0]}")
             return
 
+        # --- START: THE DEFINITIVE FIX ---
+
+        # First, determine if the move being made is a jump.
+        # A turn can only continue if the move itself was a jump.
+        is_a_jump_move = abs(path[0][0] - path[1][0]) == 2
+
+        # Apply all steps in the path (this handles both slides and multi-jumps correctly)
         for i in range(len(path) - 1):
             start_pos = path[i]
             end_pos = path[i+1]
             
             self.board.move(piece, end_pos[0], end_pos[1])
             
-            is_jump = abs(start_pos[0] - end_pos[0]) == 2
-            if is_jump:
+            # If it was a jump, remove the captured piece
+            if abs(start_pos[0] - end_pos[0]) == 2:
                 mid_row = (start_pos[0] + end_pos[0]) // 2
                 mid_col = (start_pos[1] + end_pos[1]) // 2
                 jumped_piece = self.board.get_piece(mid_row, mid_col)
                 if jumped_piece != 0:
                     self.board._remove([jumped_piece])
 
-        final_pos_piece = self.board.get_piece(path[-1][0], path[-1][1])
-        if final_pos_piece != 0:
-            more_jumps = self.board._get_moves_for_piece(final_pos_piece, find_jumps=True)
-            if more_jumps:
-                logger.debug("Multi-jump detected. Turn will not change yet.")
-                self.selected_piece = final_pos_piece
-                self.valid_moves = {(final_pos_piece.row, final_pos_piece.col): more_jumps}
-                return
-
+        # After the move, ONLY check for more jumps IF the move just made was a jump.
+        if is_a_jump_move:
+            final_pos_piece = self.board.get_piece(path[-1][0], path[-1][1])
+            if final_pos_piece != 0:
+                more_jumps = self.board._get_moves_for_piece(final_pos_piece, find_jumps=True)
+                if more_jumps:
+                    logger.debug("Multi-jump detected. Turn will not change yet.")
+                    self.selected_piece = final_pos_piece
+                    self.valid_moves = {(final_pos_piece.row, final_pos_piece.col): more_jumps}
+                    return # Exit without changing turn to allow the user/AI to continue the jump.
+        
+        # If it wasn't a jump move, or if no more jumps are available, the turn MUST end.
         logger.debug("Move sequence complete. Changing turn.")
         self._change_turn()
 
+        # --- END: THE DEFINITIVE FIX ---
     def _handle_click(self, pos):
         if self.done or self.turn != self.player_color: return
         

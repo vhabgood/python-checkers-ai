@@ -83,13 +83,17 @@ def get_all_move_sequences(board, color):
     valid_moves = board.get_all_valid_moves(color)
     is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
 
-    for start_pos, end_positions in valid_moves.items():
-        for end_pos in end_positions:
-            if is_jump:
-                # If jumps are possible, we must explore them recursively
-                yield from _find_jump_paths(board, [start_pos, end_pos])
-            else:
-                # Otherwise, it's just a simple slide
+    # --- FIX: Ensure all valid moves are considered ---
+    if is_jump:
+        # If there's a jump, we only need to yield the jump paths
+        for start_pos, end_positions in valid_moves.items():
+            if any(end_positions.values()): # This ensures we only process pieces that can jump
+                for end_pos in end_positions:
+                    yield from _find_jump_paths(board, [start_pos, end_pos])
+    else:
+        # If there are no jumps, yield all the simple slide moves
+        for start_pos, end_positions in valid_moves.items():
+            for end_pos in end_positions:
                 yield [start_pos, end_pos]
 
 def _find_jump_paths(board, path_so_far):
@@ -98,29 +102,30 @@ def _find_jump_paths(board, path_so_far):
     """
     last_pos = path_so_far[-1]
     
-    # Simulate the board state *after* the current jump in the path
+    # Create a temporary board state reflecting the path so far
     temp_board = board.apply_move(path_so_far)
+    piece_at_last_pos = temp_board.get_piece(last_pos[0], last_pos[1])
     
-    # If the turn has flipped, the sequence is over (e.g., by kinging or no more jumps).
-    if temp_board.turn != board.turn:
+    # If there's no piece or the turn has flipped (e.g. promotion), the path ends
+    if piece_at_last_pos == 0 or temp_board.turn != board.turn:
         yield path_so_far
         return
 
-    piece = temp_board.get_piece(last_pos[0], last_pos[1])
-    if piece == 0:
-        yield path_so_far
-        return
+    # Check for more jumps from this new position
+    more_jumps = temp_board._get_moves_for_piece(piece_at_last_pos, find_jumps=True)
 
-    more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
-
-    # Base case: No more jumps are possible from this position
+    # If there are no further jumps, this path is complete
     if not more_jumps:
         yield path_so_far
         return
     
-    # Recursive step: For each new jump, explore the longer path
+    # If there are more jumps, explore each one recursively
+    found_longer_path = False
     for next_pos in more_jumps:
+        found_longer_path = True
         new_path = path_so_far + [next_pos]
-        # IMPORTANT: Recurse using the original board, but the *new, longer* path
         yield from _find_jump_paths(board, new_path)
 
+    # This handles cases where a jump is possible but not taken, ending the sequence.
+    if not found_longer_path:
+        yield path_so_far

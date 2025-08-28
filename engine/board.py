@@ -207,13 +207,13 @@ class Board:
         if piece == 0:
             return temp_board
 
-        # --- BUG FIX: A jump is defined by the first step in the path. ---
+        # --- BUG FIX: A jump is defined by the first step in the path, not the whole path. ---
         is_jump = abs(path[0][0] - path[1][0]) == 2
         
         end_pos = path[-1]
         was_king = piece.king
         
-        # This logic is now correct because `is_jump` is correctly identified.
+        # This logic is now correct because `is_jump` is properly identified.
         if is_jump:
             captured_pieces = []
             for i in range(len(path) - 1):
@@ -251,4 +251,3 @@ class Board:
         logger.debug(f"SIM: Path {path}, Orig: {orig_turn}, Flip: {turn_ends}, Final: {final_turn}")
                 
         return temp_board
-
