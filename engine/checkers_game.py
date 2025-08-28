@@ -172,7 +172,7 @@ class CheckersGame:
     def force_ai_move(self):
         if self.turn == self.player_color and not self.ai_is_thinking and not self.done:
             logger.info(f"Player forcing AI to calculate move for {constants.PLAYER_NAMES[self.player_color]}")
-            self.start_ai_turn(force_color=self.player_color)
+            self.start_ai_turn(force_color=self.turn)
     
     def start_ai_turn(self, force_color=None):
         if self.ai_is_thinking: 
@@ -406,46 +406,39 @@ class CheckersGame:
                     pygame.draw.circle(self.screen, (0, 255, 0), center_pos, 15)
 
     def update(self):
-            # --- ADD THIS BLOCK AT THE TOP OF THE METHOD ---
-        if not self.game_started:
-            # On the very first update, just mark the game as started and do nothing else.
-            # This ensures the first frame is drawn before the AI can think.
-            self.game_started = True
-            return
-        # --- END OF NEW BLOCK ---
-    
         if self.done:
             return
 
-        logger.debug(f"UPDATE START: Turn={constants.PLAYER_NAMES[self.turn]}, AI_Thinking={self.ai_is_thinking}")
-        if self.turn == self.ai_color:
-            try:
-                best_move_path = self.ai_move_queue.get_nowait()
-                
-                # --- START: THE DEFINITIVE FIX ---
-                # An empty list from the AI means it has no valid moves and its turn is over.
-                if not best_move_path:
-                    logger.warning("AI returned no moves, which means it has lost or is blocked. Changing turn.")
-                    self._change_turn()
-                    return
+        # Start AI thinking only if it's its turn and it's not already thinking.
+        if self.turn == self.ai_color and not self.ai_is_thinking:
+            self.start_ai_turn()
 
-                # Validate the move from the AI to ensure it's legal
-                start_pos = best_move_path[0]
-                end_pos = best_move_path[1]
-                if start_pos not in self.valid_moves or end_pos not in self.valid_moves.get(start_pos, {}):
-                    logger.error(f"AI chose an ILLEGAL MOVE: {self._format_move_path(best_move_path)}")
-                    logger.error(f"Valid moves were: {self.valid_moves}")
-                    self._change_turn() # End the AI's turn if it makes a mistake.
-                    return
-                # --- END: THE DEFINITIVE FIX ---
+        # Check for a completed move from the AI.
+        try:
+            best_move_path = self.ai_move_queue.get_nowait()
+            
+            # --- START: REVISED LOGIC ---
+            if best_move_path is None:
+                logger.warning("AI calculation returned None. Turn will be changed.")
+                self.ai_is_thinking = False # Reset the flag
+                self._change_turn()
+                return
 
-                logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
-                self._apply_move_sequence(best_move_path)
+            if not best_move_path:
+                logger.warning("AI has no moves. Changing turn.")
+                self.ai_is_thinking = False # Reset the flag
+                self._change_turn()
+                return
 
-            except queue.Empty:
-                # If the queue is empty and the AI isn't already thinking, start the AI turn.
-                if not self.ai_is_thinking:
-                    self.start_ai_turn()
+            # If we get here, the AI has a valid move to apply.
+            logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
+            self._apply_move_sequence(best_move_path)
+            self.ai_is_thinking = False # <-- RESET THE FLAG HERE, AFTER the move is made.
+            # --- END: REVISED LOGIC ---
+
+        except queue.Empty:
+            # This is the normal state while waiting for player input or AI calculation.
+            pass
         
     def handle_events(self, events, app=None):
         for event in events:

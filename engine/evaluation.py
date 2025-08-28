@@ -6,27 +6,53 @@ from .constants import RED, WHITE, ROWS, COLS, ACF_TO_COORD
 logger = logging.getLogger('board')
 
 def evaluate_board(board):
-    white_material = (board.white_left - board.white_kings) * 1.0 + board.white_kings * 1.5
-    red_material = (board.red_left - board.red_kings) * 1.0 + board.red_kings * 1.5
-    material_score = white_material - red_material
-    
-    white_moves = board.get_all_valid_moves(WHITE)
-    red_moves = board.get_all_valid_moves(RED)
-    mobility_score = 0.1 * (len(white_moves) - len(red_moves))
-    
-   # CORRECTED JUMP COUNTING LOGIC
-    white_jumps = 0
-    for start_pos, end_positions in white_moves.items():
-        if any(abs(start_pos[0] - end_pos[0]) == 2 for end_pos in end_positions):
-            white_jumps += 1
+    """
+    Calculates the static score of the board from White's perspective.
+    This is the AI's "brain" and includes multiple strategic heuristics.
+    """
+    # --- Material Score ---
+    white_men = board.white_left - board.white_kings
+    red_men = board.red_left - board.red_kings
+    material_score = (white_men - red_men) + (board.white_kings - board.red_kings) * 1.5
 
-    red_jumps = 0
-    for start_pos, end_positions in red_moves.items():
-        if any(abs(start_pos[0] - end_pos[0]) == 2 for end_pos in end_positions):
-            red_jumps += 1
-            
-    jump_score = 0.5 * (white_jumps - red_jumps)
+    # --- Positional Scores ---
+    white_pos_score = 0
+    red_pos_score = 0
+    
+    # Heuristics:
+    BACK_ROW_BONUS = 0.5
+    SIDE_PENALTY = -0.2
+    PROMOTION_PROGRESS_BONUS = 0.1
+    KING_ADVANTAGE_BONUS = 2.0 # Huge bonus for having kings when the opponent has none
 
-    final_score = (material_score * 100) + mobility_score + jump_score
+    for piece in board.get_all_pieces(WHITE):
+        # Bonus for advancing pieces towards promotion
+        white_pos_score += (ROWS - 1 - piece.row) * PROMOTION_PROGRESS_BONUS
+        # Penalty for pieces on the side
+        if piece.col == 0 or piece.col == COLS - 1:
+            white_pos_score += SIDE_PENALTY
+
+    for piece in board.get_all_pieces(RED):
+        # Bonus for advancing pieces towards promotion
+        red_pos_score += piece.row * PROMOTION_PROGRESS_BONUS
+        # Bonus for pieces defending the back rank
+        if piece.row == 0:
+            red_pos_score += BACK_ROW_BONUS
+        # Penalty for pieces on the side
+        if piece.col == 0 or piece.col == COLS - 1:
+            red_pos_score += SIDE_PENALTY
+
+    positional_score = white_pos_score - red_pos_score
+
+    # --- King Advantage Score ---
+    king_advantage = 0
+    if board.white_kings > 0 and board.red_kings == 0:
+        king_advantage = KING_ADVANTAGE_BONUS
+    elif board.red_kings > 0 and board.white_kings == 0:
+        king_advantage = -KING_ADVANTAGE_BONUS
+
+    # --- Final Score Combination ---
+    # Material is weighted most heavily, followed by positional advantages.
+    final_score = (material_score * 100) + positional_score + king_advantage
     
     return final_score
