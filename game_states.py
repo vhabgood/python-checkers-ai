@@ -111,11 +111,6 @@ class PlayerSelectionScreen(BaseState):
 
     def select_player(self, color):
         """Callback function for the buttons."""
-        if self.selection_made:
-            logger.warning("Player selection already made, ignoring subsequent click.")
-            return
-        
-        self.selection_made = True
         player_color_name = PLAYER_NAMES.get(color)
         self.player_choice = player_color_name.lower()
         self.done = True
@@ -123,9 +118,11 @@ class PlayerSelectionScreen(BaseState):
 
     def handle_events(self, events, app=None):
         for event in events:
+            # Only handle clicks if a selection has NOT been made yet
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.selection_made:
                 for button in self.buttons:
                     if button.is_clicked(event.pos):
+                        self.selection_made = True # Set the flag to true, preventing more clicks
                         logger.debug("Player selection button clicked.")
                         button.callback()
                         break # Stop processing other buttons after a click

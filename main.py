@@ -1,139 +1,117 @@
 # main.py
 import pygame
 import logging
-import datetime
-import argparse
 import sys
 import threading
-import os
 import queue
-
+import argparse
 from engine.checkers_game import CheckersGame
-from game_states import LoadingScreen, PlayerSelectionScreen
-from engine.constants import FPS, WIDTH, HEIGHT
+from engine.constants import WIDTH, HEIGHT, COLOR_BG
+from game_states import PlayerSelectionScreen, LoadingScreen
 
-def configure_logging(args):
-    """Sets up file and console logging based on command-line arguments."""
-    log_level = logging.INFO
-    if args.debug_gui or args.debug_board:
-        log_level = logging.DEBUG
-    log_dir = "logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    log_filename = os.path.join(log_dir, f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_checkers_debug.log")
-    
-    class CustomFormatter(logging.Formatter):
-        def format(self, record):
-            pathname = record.pathname
-            if os.getcwd() in pathname:
-                record.pathname = os.path.relpath(pathname)
-            return super().format(record)
+# --- Logging Setup ---
+# Using a more robust logging configuration
+log_format = '%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s'
+logging.basicConfig(level=logging.DEBUG, format=log_format)
+logger = logging.getLogger('gui')
 
-    file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(log_level)
-    file_handler.setFormatter(CustomFormatter('%(asctime)s - %(pathname)s:%(lineno)d - %(name)s - %(levelname)s - %(message)s'))
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.WARNING)
-    console_handler.setFormatter(CustomFormatter('%(name)s - %(levelname)s - %(message)s'))
-    logging.basicConfig(level=log_level, handlers=[file_handler, console_handler])
-    logging.getLogger('gui').setLevel(logging.INFO if not args.debug_gui else logging.DEBUG)
-    logging.getLogger('board').setLevel(logging.INFO if not args.debug_board else logging.DEBUG)
+# --- Argument Parsing ---
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Checkers AI")
+    parser.add_argument('--debug-board', action='store_true', help='Show board debug numbers.')
+    parser.add_argument('--no-db', action='store_true', help='Do not load the endgame databases.')
+    return parser.parse_args()
 
-class StateManager:
+class App:
     """
-    Manages game states with a non-blocking, threaded asset loader.
+    The main application class that manages the game window, states, and the main loop.
     """
-    def __init__(self, screen, args): # Pass args to the constructor
-        self.screen = screen
-        self.args = args # Store args
+    def __init__(self, args):
+        pygame.init()
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        pygame.display.set_caption('Checkers AI')
+        self.clock = pygame.time.Clock()
+        self.done = False
+        self.args = args
         self.status_queue = queue.Queue()
-        self.states = {
-            "loading": LoadingScreen(self.screen, self.status_queue),
-            "player_selection": PlayerSelectionScreen(self.screen),
-            "game": None
-        }
-        self.current_state_name = "player_selection"
-        self.current_state = self.states[self.current_state_name]
-        self.running = True
         self.loading_thread = None
-        self.game_instance = None
-        self.logger = logging.getLogger('gui')
+        self.game = None
+        
+        self.states = {
+            "selection": PlayerSelectionScreen(self.screen),
+            "loading": LoadingScreen(self.screen, self.status_queue),
+            "game": None # Game is initialized via the loading thread
+        }
+        self.state = self.states["selection"]
 
-    def load_game_thread(self, player_choice):
-        """This function runs in a separate thread to load game assets."""
-        self.logger.info("DATABASE: Loading thread started.")
+    def load_game(self, player_color_str):
+        """
+        This method runs in a separate thread to load all game resources
+        without freezing the UI.
+        """
+        thread_id = threading.get_ident()
+        logger.info(f"DATABASE: Loading thread {thread_id} started.")
         try:
-            # Pass the args object to CheckersGame
-            self.game_instance = CheckersGame(self.screen, player_choice, self.status_queue, self.args)
+            self.game = CheckersGame(self.screen, player_color_str, self.status_queue, self.args)
+            self.states["game"] = self.game
             self.status_queue.put("DONE")
+            logger.info(f"DATABASE: Loading thread {thread_id} finished successfully.")
         except Exception as e:
-            self.logger.error(f"DATABASE: Failed to load game assets in thread: {e}", exc_info=True)
-            self.game_instance = None
-            self.status_queue.put("DONE")
-        self.logger.info("DATABASE: Loading thread finished.")
+            logger.error(f"DATABASE: Loading thread {thread_id} failed: {e}", exc_info=True)
+            self.status_queue.put("Error loading game!")
 
-    def run(self):
-        """The main application loop."""
-        clock = pygame.time.Clock()
-        while self.running:
+
+    def transition_state(self):
+        """Handles changing from one game state to another."""
+        if self.state.done:
+            next_state_name = self.state.next_state
+            
+            if next_state_name == "loading":
+                if self.loading_thread and self.loading_thread.is_alive():
+                    logger.warning("Transition to loading requested, but a loading thread is already active. Ignoring.")
+                    return
+
+                player_color = self.states["selection"].player_choice
+                logger.info(f"Player selected {player_color}, transitioning to LoadingScreen.")
+                self.state = self.states["loading"]
+                self.state.reset()
+                
+                # Start the loading process in a separate thread
+                self.loading_thread = threading.Thread(target=self.load_game, args=(player_color,), daemon=True)
+                self.loading_thread.start()
+
+            elif next_state_name == "game":
+                if self.states["game"]:
+                    self.state = self.states["game"]
+                    logger.info("Transitioned to Game state.")
+                else:
+                    logger.error("Attempted to transition to game state, but game object is not ready.")
+            
+            elif next_state_name is None:
+                self.done = True # If next state is None, quit the app
+
+    def main_loop(self):
+        """The main loop of the application."""
+        while not self.done:
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT:
-                    self.running = False
-
-            self.current_state.handle_events(events)
-            self.current_state.update()
-            self.current_state.draw()
-
-            if self.current_state.done:
-                if self.current_state_name == "player_selection":
-                    player_choice = self.current_state.player_choice
-                    self.logger.info(f"Player selected {player_choice}, transitioning to LoadingScreen.")
-                    
-                    self.current_state_name = "loading"
-                    self.current_state = self.states["loading"]
-                    self.current_state.reset()
-                    
-                    self.loading_thread = threading.Thread(
-                        target=self.load_game_thread, 
-                        args=(player_choice,), 
-                        daemon=True
-                    )
-                    self.loading_thread.start()
-                    self.logger.debug("MAIN: Database loading thread initiated.")
-
-                elif self.current_state_name == "loading":
-                    self.logger.debug("MAIN: Loading complete. Transitioning to game state.")
-                    if self.game_instance:
-                        self.states["game"] = self.game_instance
-                        self.current_state_name = "game"
-                        self.current_state = self.states["game"]
-                    else:
-                        self.logger.critical("Game instance failed to load. Exiting.")
-                        self.running = False
-                
-                elif self.current_state.next_state is None:
-                    self.running = False
+                    self.done = True
             
-            pygame.display.flip()
-            clock.tick(FPS)
-        pygame.quit()
+            self.state.handle_events(events, self)
+            self.state.update()
+            self.transition_state()
+            
+            self.screen.fill(COLOR_BG)
+            self.state.draw()
+            pygame.display.update()
+            self.clock.tick(60)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="A checkers game with an AI engine.")
-    parser.add_argument("--debug-gui", action="store_true", help="Enable debug logging for GUI.")
-    parser.add_argument("--debug-board", action="store_true", help="Enable debug logging for board.")
-    # --- NEW FLAG ---
-    parser.add_argument("--no-db", action="store_true", help="Skip loading endgame databases for faster startup.")
-    args = parser.parse_args()
-    
-    configure_logging(args)
-    pygame.init()
-    window_size = (WIDTH, HEIGHT)
-    screen = pygame.display.set_mode(window_size)
-    pygame.display.set_caption("Checkers")
-    
-    # Pass the parsed args into the StateManager
-    game_manager = StateManager(screen, args)
-    game_manager.run()
+        pygame.quit()
+        sys.exit()
+
+if __name__ == '__main__':
+    args = parse_arguments()
+    app = App(args)
+    app.main_loop()
 
