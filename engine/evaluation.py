@@ -14,8 +14,17 @@ def evaluate_board(board):
     red_moves = board.get_all_valid_moves(RED)
     mobility_score = 0.1 * (len(white_moves) - len(red_moves))
     
-    white_jumps = sum(1 for moves in white_moves.values() if abs(list(moves.keys())[0][0] - list(white_moves.keys())[0][0]) > 1)
-    red_jumps = sum(1 for moves in red_moves.values() if abs(list(moves.keys())[0][0] - list(red_moves.keys())[0][0]) > 1)
+   # CORRECTED JUMP COUNTING LOGIC
+    white_jumps = 0
+    for start_pos, end_positions in white_moves.items():
+        if any(abs(start_pos[0] - end_pos[0]) == 2 for end_pos in end_positions):
+            white_jumps += 1
+
+    red_jumps = 0
+    for start_pos, end_positions in red_moves.items():
+        if any(abs(start_pos[0] - end_pos[0]) == 2 for end_pos in end_positions):
+            red_jumps += 1
+            
     jump_score = 0.5 * (white_jumps - red_jumps)
 
     final_score = (material_score * 100) + mobility_score + jump_score

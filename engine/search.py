@@ -21,8 +21,7 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
     for move_path in possible_moves:
         # Get the final board state for this move sequence using the authoritative function
         move_board = board.apply_move(move_path)
-        
-        score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
+        score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), ai_color, evaluate_func)
         full_path_for_display = move_path + subsequent_path
         all_scored_moves.append((score, full_path_for_display, move_path))
     
@@ -39,22 +38,22 @@ def get_ai_move_analysis(board, depth, ai_color, evaluate_func):
 
     return best_path_for_execution, top_5_for_display
 
-def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
-    """
-    The core recursive search algorithm.
-    """
+def minimax(board, depth, alpha, beta, ai_color, evaluate_func):
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
 
+    # DETERMINE who is maximizing based on the current board's turn
+    maximizing_player = board.turn == ai_color
+
     best_path = []
-    color_to_move = WHITE if maximizing_player else RED
     
-    # Initialize max_eval and min_eval
     if maximizing_player:
         max_eval = float('-inf')
-        for path in get_all_move_sequences(board, color_to_move):
+        # ALWAYS generate moves for the player whose turn it is on the board
+        for path in get_all_move_sequences(board, board.turn):
             move_board = board.apply_move(path)
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
+            # PASS ai_color down, don't flip a boolean
+            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, ai_color, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
                 best_path = path + subsequent_path
@@ -64,9 +63,9 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         return max_eval, best_path
     else: # Minimizing player
         min_eval = float('inf')
-        for path in get_all_move_sequences(board, color_to_move):
+        for path in get_all_move_sequences(board, board.turn):
             move_board = board.apply_move(path)
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
+            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, ai_color, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
                 best_path = path + subsequent_path
