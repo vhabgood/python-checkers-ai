@@ -138,4 +138,13 @@ class PlayerSelectionScreen(BaseState):
         self.screen.blit(title_text, title_rect)
         for button in self.buttons:
             button.draw(self.screen)
+            
+            # game_states.py -> in PlayerSelectionScreen class
+
+    def reset(self):
+        """Resets the screen to its initial state."""
+        self.done = False
+        self.next_state = None
+        self.player_choice = None
+        self.selection_made = False # <-- Reset the flag here
 

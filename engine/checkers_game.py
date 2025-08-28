@@ -50,7 +50,7 @@ class CheckersGame:
         self.positional_score = 0.0
         self.ai_top_moves = []
         self.ai_depth = DEFAULT_AI_DEPTH
-
+        self.game_started = False  # <-- ADD THIS LINE
         # --- DATABASE LOADING ---
         status_queue.put("Loading Opening Book...")
         self.opening_book = self._load_database('resources/custom_book.pkl')
@@ -406,6 +406,14 @@ class CheckersGame:
                     pygame.draw.circle(self.screen, (0, 255, 0), center_pos, 15)
 
     def update(self):
+            # --- ADD THIS BLOCK AT THE TOP OF THE METHOD ---
+        if not self.game_started:
+            # On the very first update, just mark the game as started and do nothing else.
+            # This ensures the first frame is drawn before the AI can think.
+            self.game_started = True
+            return
+        # --- END OF NEW BLOCK ---
+    
         if self.done:
             return
 
@@ -414,26 +422,28 @@ class CheckersGame:
             try:
                 best_move_path = self.ai_move_queue.get_nowait()
                 
-                # --- START: ADD THIS VALIDATION BLOCK ---
-                if best_move_path: # Ensure the path is not empty
-                    start_pos = best_move_path[0]
-                    end_pos = best_move_path[1]
-                    # Check if the move from the AI is in the list of valid moves
-                    if start_pos not in self.valid_moves or end_pos not in self.valid_moves.get(start_pos, {}):
-                        logger.error(f"AI chose an ILLEGAL MOVE: {self._format_move_path(best_move_path)}")
-                        logger.error(f"Valid moves were: {self.valid_moves}")
-                        # If the AI makes a mistake, just end its turn.
-                        self._change_turn()
-                        return 
-                # --- END: ADD THIS VALIDATION BLOCK ---
+                # --- START: THE DEFINITIVE FIX ---
+                # An empty list from the AI means it has no valid moves and its turn is over.
+                if not best_move_path:
+                    logger.warning("AI returned no moves, which means it has lost or is blocked. Changing turn.")
+                    self._change_turn()
+                    return
+
+                # Validate the move from the AI to ensure it's legal
+                start_pos = best_move_path[0]
+                end_pos = best_move_path[1]
+                if start_pos not in self.valid_moves or end_pos not in self.valid_moves.get(start_pos, {}):
+                    logger.error(f"AI chose an ILLEGAL MOVE: {self._format_move_path(best_move_path)}")
+                    logger.error(f"Valid moves were: {self.valid_moves}")
+                    self._change_turn() # End the AI's turn if it makes a mistake.
+                    return
+                # --- END: THE DEFINITIVE FIX ---
 
                 logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
-                if isinstance(best_move_path, list):
-                    self._apply_move_sequence(best_move_path)
-                elif best_move_path is None:
-                    logger.warning("AI calculation returned None. Changing turn.")
-                    self._change_turn()
+                self._apply_move_sequence(best_move_path)
+
             except queue.Empty:
+                # If the queue is empty and the AI isn't already thinking, start the AI turn.
                 if not self.ai_is_thinking:
                     self.start_ai_turn()
         

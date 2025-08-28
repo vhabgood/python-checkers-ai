@@ -1,26 +1,52 @@
 # main.py
 import pygame
+import os
 import logging
 import sys
 import threading
 import queue
 import argparse
-from engine.checkers_game import CheckersGame
-from engine.constants import WIDTH, HEIGHT, COLOR_BG
-from game_states import PlayerSelectionScreen, LoadingScreen
+from datetime import datetime
 
-# --- Logging Setup ---
-# Using a more robust logging configuration
-log_format = '%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s'
-logging.basicConfig(level=logging.DEBUG, format=log_format)
-logger = logging.getLogger('gui')
+# --- START: LOGGING CONFIGURATION ---
+# Create the logs directory if it doesn't exist
+if not os.path.exists('logs'):
+    os.makedirs('logs')
 
+# Generate a filename with the current timestamp
+log_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '_checkers_debug.log'
+log_filepath = os.path.join('logs', log_filename)
+
+# Configure the logging system
+logging.basicConfig(
+    level=logging.DEBUG,  # Capture all levels of logs
+    format='%(asctime)s - %(name)-12s - %(levelname)-8s - %(message)s',
+    filename=log_filepath,  # Log to the specified file
+    filemode='w'  # Overwrite the log file each time
+)
+# Also, create a handler to print INFO level messages and above to the console
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(levelname)-8s - %(message)s')
+console_handler.setFormatter(formatter)
+logging.getLogger('').addHandler(console_handler)
+
+logging.info(f"Logging initialized. Log file at: {log_filepath}")
+# You can now get logger instances in other files, and they will inherit this config
+logger = logging.getLogger(__name__)
+logger.info("Logging configured. Application starting.")
+# --- END: LOGGING CONFIGURATION ---
 # --- Argument Parsing ---
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Checkers AI")
     parser.add_argument('--debug-board', action='store_true', help='Show board debug numbers.')
     parser.add_argument('--no-db', action='store_true', help='Do not load the endgame databases.')
     return parser.parse_args()
+
+# --- 2. NOW IMPORT YOUR GAME MODULES ---
+from engine.constants import WIDTH, HEIGHT, FPS, COLOR_BG, WHITE, RED, COLOR_BUTTON, COLOR_BUTTON_HOVER, COLOR_TEXT
+from engine.checkers_game import CheckersGame
+from game_states import PlayerSelectionScreen, LoadingScreen
 
 class App:
     """
