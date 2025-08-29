@@ -216,6 +216,7 @@ class CheckersGame:
     def _change_turn(self):
         logger.debug(f"Changing turn from {constants.PLAYER_NAMES[self.turn]}...")
         self.selected_piece = None
+        self.ai_top_moves= [] #attempt at fixing double move bug
         self.turn = RED if self.turn == WHITE else WHITE
         self.board.turn = self.turn
         self.ai_is_thinking = False
@@ -353,20 +354,45 @@ class CheckersGame:
         
         for button in self.buttons:
             button.draw(self.screen)
-            
+
     def draw_dev_panel(self):
-        if not self.dev_mode: return
+        # Step A: Check if Dev Mode is active. If not, the function does nothing.
+        if not self.dev_mode:
+            return
+
+        # Step B: Define the area for the panel and draw its dark background.
         panel_y = BOARD_SIZE
         panel_height = self.screen.get_height() - BOARD_SIZE
         pygame.draw.rect(self.screen, (10, 10, 30), (0, panel_y, self.screen.get_width(), panel_height))
+        
+        # Step C: Draw the title text "--- AI Analysis ---".
         title_surf = self.font.render("--- AI Analysis ---", True, WHITE)
         self.screen.blit(title_surf, (10, panel_y + 5))
+        
+        # Step D: Check if the self.ai_top_moves list contains any data.
+        # This list is populated by the AI's search function *only* when the AI is thinking.
+        if not self.ai_top_moves:
+            # If the list is empty, it's the player's turn, and the panel correctly remains blank.
+            logger.debug("DRAW_DEV: self.ai_top_moves is empty. Nothing to draw.")
+            return
+
+        # Step E: If there is data, loop through the top moves (up to a maximum of 10).
         y_offset = 30
+        logger.debug(f"DRAW_DEV: Found {len(self.ai_top_moves)} analysis lines to draw.")
         for i, (score, path) in enumerate(self.ai_top_moves[:10]):
+            # Step E1: Format the move path from coordinates like [(2,1),(3,2)] to ACF notation like "9-14".
             move_str = self._format_move_path(path)
+            
+            # Step E2: Create the full line of text, e.g., "1. 9-14 18-22 Score: -100.00".
             line = f"{i+1}. {move_str:<25} Score: {score:.2f}"
+            
+            # Step E3: Render the text line into a Pygame surface.
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
+            
+            # Step E4: Draw the rendered text onto the screen at its calculated position.
             self.screen.blit(text_surf, (20, panel_y + y_offset))
+            
+            # Step E5: Move the vertical position down for the next line.
             y_offset += 13
 
     def draw(self):

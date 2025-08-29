@@ -147,10 +147,12 @@ class Board:
     def get_all_valid_moves(self, color):
         """
         The single authoritative function to get all valid moves for a color,
-        correctly enforcing the mandatory jump rule.
+        correctly enforcing the mandatory jump rule. Now with added logging.
         """
         moves = {}
         has_jumps = False
+        
+        logger.debug(f"GET_MOVES: Finding all possible jumps for {'White' if color == WHITE else 'Red'}.")
         for piece in self.get_all_pieces(color):
             jumps = self._get_moves_for_piece(piece, find_jumps=True)
             if jumps:
@@ -158,19 +160,30 @@ class Board:
                 moves[(piece.row, piece.col)] = jumps
         
         if has_jumps:
+            logger.debug(f"GET_MOVES: Jumps found. Returning only jump moves: {moves}")
             return moves
 
+        logger.debug(f"GET_MOVES: No jumps found. Finding all slide moves for {'White' if color == WHITE else 'Red'}.")
         for piece in self.get_all_pieces(color):
             slides = self._get_moves_for_piece(piece, find_jumps=False)
             if slides:
                 moves[(piece.row, piece.col)] = slides
+        
+        logger.debug(f"GET_MOVES: Slide moves found: {moves}")
         return moves
 
     def _get_moves_for_piece(self, piece, find_jumps):
-        """Helper function to find all moves (jumps or slides) for a single piece."""
+        """
+        Helper function to find all moves (jumps or slides) for a single piece.
+        Now with added logging.
+        """
         moves = {}
         step = 2 if find_jumps else 1
         
+        move_type = "jumps" if find_jumps else "slides"
+        piece_pos = COORD_TO_ACF.get((piece.row, piece.col), '?')
+        logger.debug(f"GET_PIECE_MOVES: Finding {move_type} for piece at {piece_pos} ({piece.row}, {piece.col})")
+
         directions = []
         if piece.color == RED or piece.king:
             directions.extend([(1, -1), (1, 1)])
@@ -193,6 +206,9 @@ class Board:
             else:
                 if dest_square == 0:
                     moves[(end_row, end_col)] = []
+        
+        if moves:
+            logger.debug(f"GET_PIECE_MOVES: Found {len(moves)} {move_type} for piece at {piece_pos}: {moves.keys()}")
         return moves
 
     def apply_move(self, path):
