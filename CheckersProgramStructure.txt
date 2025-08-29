@@ -1,0 +1,165 @@
+Of course. Pausing to document the architecture is an excellent idea. It helps clarify the program's structure and identify which components are stable.
+
+Here is the program's class and method breakdown in a text file format, with comments indicating the methods we have tested and confirmed are working correctly.
+
+-----
+
+### Checkers AI Program Structure
+
+```
+======================================================================
+FILE: main.py
+======================================================================
+
+CLASS: App
+  |
+  |-- METHOD: __init__(self, args)
+  |   |  INPUTS: args (from argparse)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Initializes Pygame, the main screen, and the state manager.
+  |
+  |-- METHOD: load_game(self, player_color_str)
+  |   |  INPUTS: player_color_str (string: 'white' or 'red')
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Runs in a separate thread to load all game resources without freezing the UI. Creates the CheckersGame instance. # Tested and confirmed working.
+  |
+  |-- METHOD: transition_state(self)
+  |   |  INPUTS: None
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Handles changing from one game state (like 'selection' or 'loading') to the next. # Tested and confirmed working.
+  |
+  |-- METHOD: main_loop(self)
+  |   |  INPUTS: None
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: The main loop of the application that handles events, updates, and drawing. # Tested and confirmed working.
+
+======================================================================
+FILE: game_states.py
+======================================================================
+
+CLASS: Button
+  |
+  |-- METHOD: __init__(self, text, pos, size, callback)
+  |   |  INPUTS: text (string), pos (tuple), size (tuple), callback (function)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Creates a clickable button.
+  |
+  |-- METHOD: draw(self, screen)
+  |   |  INPUTS: screen (pygame.Surface)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Draws the button on the screen and handles hover effect.
+  |
+  |-- METHOD: is_clicked(self, pos)
+  |   |  INPUTS: pos (tuple)
+  |   |  OUTPUTS: boolean
+  |   |  PURPOSE: Checks if a given position is within the button's bounds.
+
+CLASS: PlayerSelectionScreen
+  |
+  |-- METHOD: select_player(self, color)
+  |   |  INPUTS: color (tuple: RED or WHITE)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Sets the player's chosen color and signals the game to transition to the loading state. # Tested and confirmed working.
+
+CLASS: LoadingScreen
+  |
+  |-- METHOD: update(self)
+  |   |  INPUTS: None
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Checks a queue for status messages from the loading thread and signals when loading is complete. # Tested and confirmed working.
+
+======================================================================
+FILE: engine/checkers_game.py
+======================================================================
+
+CLASS: CheckersGame
+  |
+  |-- METHOD: __init__(self, screen, player_color_str, status_queue, args)
+  |   |  PURPOSE: Initializes the entire game, including the board, AI, and UI elements.
+  |
+  |-- METHOD: start_ai_turn(self, force_color=None)
+  |   |  INPUTS: force_color (optional color tuple)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Starts the AI's thinking process in a separate thread. Clears the previous analysis from the dev panel. # Tested and confirmed working.
+  |
+  |-- METHOD: run_ai_calculation(self, color_to_move)
+  |   |  INPUTS: color_to_move (color tuple)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: The main function for the AI thread. Calls the search algorithm and puts the best move on the queue. # Tested and confirmed working.
+  |
+  |-- METHOD: _change_turn(self)
+  |   |  INPUTS: None
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Flips the current turn from one player to the other and updates the game state accordingly. # Tested and confirmed working.
+  |
+  |-- METHOD: _apply_move_sequence(self, path)
+  |   |  INPUTS: path (list of coordinate tuples)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Applies a move or a sequence of jumps to the main game board. # Tested and confirmed working.
+  |
+  |-- METHOD: update(self)
+  |   |  INPUTS: None
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: The main game logic loop. Starts the AI when it's its turn and retrieves/applies the AI's chosen move from the queue. # Tested and confirmed working.
+  |
+  |-- METHOD: draw_dev_panel(self)
+  |   |  INPUTS: None
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Draws the developer panel, displaying the AI's analysis from its most recent turn. # Tested and confirmed working.
+
+======================================================================
+FILE: engine/board.py
+======================================================================
+
+CLASS: Board
+  |
+  |-- METHOD: move(self, piece, row, col)
+  |   |  INPUTS: piece (Piece object), row (int), col (int)
+  |   |  OUTPUTS: None
+  |   |  PURPOSE: Moves a piece on the board's internal representation and handles king promotion. # Tested and confirmed working.
+  |
+  |-- METHOD: get_all_valid_moves(self, color)
+  |   |  INPUTS: color (tuple)
+  |   |  OUTPUTS: dictionary of valid moves
+  |   |  PURPOSE: The authoritative function for getting all legal moves for a player, correctly enforcing the mandatory jump rule. # Tested and confirmed working.
+  |
+  |-- METHOD: apply_move(self, path)
+  |   |  INPUTS: path (list of coordinate tuples)
+  |   |  OUTPUTS: new Board object
+  |   |  PURPOSE: The AI's "imagination". Creates a copy of the board, applies a move, and returns the resulting board state for analysis. # Tested and confirmed working.
+
+======================================================================
+FILE: engine/search.py
+======================================================================
+
+FUNCTION: get_ai_move_analysis(board, depth, color_to_move, evaluate_func)
+  |  INPUTS: board (Board object), depth (int), color_to_move (tuple), evaluate_func (function)
+  |  OUTPUTS: best_move_path (list), top_5_for_display (list)
+  |  PURPOSE: The top-level AI function that initiates the search and returns the best move and analysis. # Tested and confirmed working.
+
+FUNCTION: minimax(board, depth, alpha, beta, maximizing_player, evaluate_func)
+  |  INPUTS: board (Board object), depth (int), alpha (float), beta (float), maximizing_player (boolean), evaluate_func (function)
+  |  OUTPUTS: score (float), best_path (list)
+  |  PURPOSE: The core recursive search algorithm that explores the game tree to find the best move. # The source of the "double move" bug.
+
+======================================================================
+FILE: engine/evaluation.py
+======================================================================
+
+FUNCTION: evaluate_board(board)
+  |  INPUTS: board (Board object)
+  |  OUTPUTS: score (float)
+  |  PURPOSE: The AI's "brain". Analyzes a board position and returns a score representing how good the position is for White. # Tested and confirmed working.
+
+======================================================================
+FILE: engine/piece.py
+======================================================================
+
+CLASS: Piece
+  |  PURPOSE: Represents a single checker piece. All methods are simple setters/getters and are considered stable. # Tested and confirmed working.
+
+======================================================================
+FILE: engine/constants.py
+======================================================================
+  |  PURPOSE: Contains global constants for the game. No classes or methods. # Tested and confirmed working.
+```

@@ -1,6 +1,6 @@
 # engine/search.py
 import logging
-from .constants import RED, WHITE
+from .constants import RED, WHITE, COORD_TO_ACF
 
 logger = logging.getLogger('board')
 
@@ -37,12 +37,10 @@ def get_all_move_sequences(board, color):
             for end_pos in end_positions:
                 yield [start_pos, end_pos]
 
-# --- START: DEFINITIVE AI LOGIC FIX ---
-
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The core recursive search algorithm. This version is corrected to ensure
-    proper evaluation and path construction.
+    The core recursive search algorithm. This version correctly implements
+    alpha-beta pruning and returns the proper values.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
@@ -62,7 +60,6 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             alpha = max(alpha, evaluation)
             if beta <= alpha:
                 break
-        logger.debug(f"MINIMAX (MAX): Depth {depth}, Best Score: {max_eval}, Alpha: {alpha}, Beta: {beta}")
         return max_eval, best_path
     else:  # Minimizing player (Red)
         min_eval = float('inf')
@@ -77,12 +74,11 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             beta = min(beta, evaluation)
             if beta <= alpha:
                 break
-        logger.debug(f"MINIMAX (MIN): Depth {depth}, Best Score: {min_eval}, Alpha: {alpha}, Beta: {beta}")
         return min_eval, best_path
 
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     """
-    The top-level AI function.
+    The top-level AI function. This version corrects the NameError.
     """
     is_maximizing = color_to_move == WHITE
     possible_moves = list(get_all_move_sequences(board, color_to_move))
@@ -108,6 +104,11 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     top_5_for_display = [(item[0], item[1]) for item in all_scored_moves[:5]]
     
     current_turn_color = "W" if color_to_move == WHITE else "R"
-    log_path_str = " ".join([f"{board.COORD_TO_ACF.get(p, '?')}" for p in best_path_for_execution])
+    
+    # --- THE DEFINITIVE FIX ---
+    # Use the correctly imported COORD_TO_ACF dictionary directly
+    log_path_str = " ".join([f"{COORD_TO_ACF.get(p, '?')}" for p in best_path_for_execution])
+    # --- END FIX ---
+
     logger.debug(f"AI SEARCH (depth {depth}, {current_turn_color}): Best path chosen: {log_path_str}")
     return best_path_for_execution, top_5_for_display

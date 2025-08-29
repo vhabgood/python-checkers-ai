@@ -216,7 +216,6 @@ class CheckersGame:
     def _change_turn(self):
         logger.debug(f"Changing turn from {constants.PLAYER_NAMES[self.turn]}...")
         self.selected_piece = None
-        self.ai_top_moves= [] #attempt at fixing double move bug
         self.turn = RED if self.turn == WHITE else WHITE
         self.board.turn = self.turn
         self.ai_is_thinking = False
@@ -416,26 +415,31 @@ class CheckersGame:
         if self.done:
             return
 
-        # If it's the AI's turn and it's not already thinking, start the calculation.
+        # Start the AI's thinking process if it's its turn and it isn't already thinking.
         if self.turn == self.ai_color and not self.ai_is_thinking:
             self.start_ai_turn()
 
-        # Check if the AI has finished thinking and placed a move in the queue.
+        # Check if the AI's thinking process has finished.
         try:
+            # get_nowait() will raise queue.Empty if the AI is still thinking.
             best_move_path = self.ai_move_queue.get_nowait()
             
+            logger.info(f"UPDATE: Move received from AI queue: {self._format_move_path(best_move_path)}")
+
             if best_move_path:
-                logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
+                # A valid path was found, apply it to the board.
                 self._apply_move_sequence(best_move_path)
             elif best_move_path is None:
-                logger.warning("AI calculation returned None. Changing turn.")
+                # A None value indicates the AI calculation failed.
+                logger.warning("AI calculation returned None. Forfeiting turn.")
                 self._change_turn()
-            else: # An empty list means the AI has no moves
-                logger.warning("AI has no moves and is blocked. Changing turn.")
+            else: # An empty list means the AI has no possible moves.
+                logger.warning("AI returned an empty list, meaning it is blocked. Forfeiting turn.")
                 self._change_turn()
 
         except queue.Empty:
-            # This is the normal state; do nothing and wait for the AI or player.
+            # This is the normal state while the game waits for the player or the AI.
+            # No action is needed.
             pass
         
     def handle_events(self, events, app=None):
