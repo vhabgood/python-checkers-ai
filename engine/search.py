@@ -93,11 +93,7 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
 
     all_scored_moves = []
     for move_path in possible_moves:
-        # --- THE DEFINITIVE FIX ---
-        # Corrected variable name from 'path' to 'move_path'
         move_board = board.apply_move(move_path)
-        # --- END FIX ---
-        
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
         full_path_for_display = move_path + subsequent_path
         all_scored_moves.append((score, full_path_for_display, move_path))

@@ -356,43 +356,46 @@ class CheckersGame:
             button.draw(self.screen)
 
     def draw_dev_panel(self):
-        # Step A: Check if Dev Mode is active. If not, the function does nothing.
+        # Step 1: Check if Dev Mode is active. If not, this function does nothing.
         if not self.dev_mode:
             return
 
-        # Step B: Define the area for the panel and draw its dark background.
+        # Step 2: Define the panel's area and draw its dark background.
         panel_y = BOARD_SIZE
         panel_height = self.screen.get_height() - BOARD_SIZE
         pygame.draw.rect(self.screen, (10, 10, 30), (0, panel_y, self.screen.get_width(), panel_height))
         
-        # Step C: Draw the title text "--- AI Analysis ---".
+        # Step 3: Draw the title text "--- AI Analysis ---".
         title_surf = self.font.render("--- AI Analysis ---", True, WHITE)
         self.screen.blit(title_surf, (10, panel_y + 5))
         
-        # Step D: Check if the self.ai_top_moves list contains any data.
-        # This list is populated by the AI's search function *only* when the AI is thinking.
+        # Step 4: The critical check. Does the `self.ai_top_moves` list have any data?
+        # This list is populated by the AI's search function *only* during the AI's turn.
         if not self.ai_top_moves:
-            # If the list is empty, it's the player's turn, and the panel correctly remains blank.
-            logger.debug("DRAW_DEV: self.ai_top_moves is empty. Nothing to draw.")
+            # If the list is empty, it means it's currently the player's turn,
+            # or the AI is just beginning its calculation.
+            logger.debug("DRAW_DEV: self.ai_top_moves is empty. Nothing to draw in the panel.")
             return
 
-        # Step E: If there is data, loop through the top moves (up to a maximum of 10).
+        # Step 5: If we have data, log that we are about to draw it.
+        logger.debug(f"DRAW_DEV: Found {len(self.ai_top_moves)} analysis lines to render.")
         y_offset = 30
-        logger.debug(f"DRAW_DEV: Found {len(self.ai_top_moves)} analysis lines to draw.")
+        
+        # Loop through the top moves (or the first 10 if there are more).
         for i, (score, path) in enumerate(self.ai_top_moves[:10]):
-            # Step E1: Format the move path from coordinates like [(2,1),(3,2)] to ACF notation like "9-14".
+            # Step 5a: Format the move path from coordinates like [(2,1),(3,2)] to ACF notation like "9-14".
             move_str = self._format_move_path(path)
             
-            # Step E2: Create the full line of text, e.g., "1. 9-14 18-22 Score: -100.00".
+            # Step 5b: Create the full string for the line, e.g., "1. 9-14 18-22   Score: -100.00".
             line = f"{i+1}. {move_str:<25} Score: {score:.2f}"
             
-            # Step E3: Render the text line into a Pygame surface.
+            # Step 5c: Render the string into a graphical text surface using the dev font.
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
             
-            # Step E4: Draw the rendered text onto the screen at its calculated position.
+            # Step 5d: Blit (draw) the text surface onto the screen at its calculated position.
             self.screen.blit(text_surf, (20, panel_y + y_offset))
             
-            # Step E5: Move the vertical position down for the next line.
+            # Step 5e: Move the y-coordinate down for the next line of text.
             y_offset += 13
 
     def draw(self):
@@ -413,35 +416,26 @@ class CheckersGame:
         if self.done:
             return
 
-        # Start AI thinking only if it's its turn and it's not already thinking.
+        # If it's the AI's turn and it's not already thinking, start the calculation.
         if self.turn == self.ai_color and not self.ai_is_thinking:
             self.start_ai_turn()
 
-        # Check for a completed move from the AI.
+        # Check if the AI has finished thinking and placed a move in the queue.
         try:
             best_move_path = self.ai_move_queue.get_nowait()
             
-            # --- START: REVISED LOGIC ---
-            if best_move_path is None:
-                logger.warning("AI calculation returned None. Turn will be changed.")
-                self.ai_is_thinking = False # Reset the flag
+            if best_move_path:
+                logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
+                self._apply_move_sequence(best_move_path)
+            elif best_move_path is None:
+                logger.warning("AI calculation returned None. Changing turn.")
                 self._change_turn()
-                return
-
-            if not best_move_path:
-                logger.warning("AI has no moves. Changing turn.")
-                self.ai_is_thinking = False # Reset the flag
+            else: # An empty list means the AI has no moves
+                logger.warning("AI has no moves and is blocked. Changing turn.")
                 self._change_turn()
-                return
-
-            # If we get here, the AI has a valid move to apply.
-            logger.info(f"MOVE QUEUE: Found move {self._format_move_path(best_move_path)}. Applying it.")
-            self._apply_move_sequence(best_move_path)
-            self.ai_is_thinking = False # <-- RESET THE FLAG HERE, AFTER the move is made.
-            # --- END: REVISED LOGIC ---
 
         except queue.Empty:
-            # This is the normal state while waiting for player input or AI calculation.
+            # This is the normal state; do nothing and wait for the AI or player.
             pass
         
     def handle_events(self, events, app=None):
