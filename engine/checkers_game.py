@@ -326,7 +326,7 @@ class CheckersGame:
             line_surf = history_font.render(line, True, WHITE)
             self.screen.blit(line_surf, (panel_x, y_offset))
             y_offset += 15
-
+            
     def draw_info_panel(self):
         panel_x = BOARD_SIZE
         panel_width = self.screen.get_width() - BOARD_SIZE
@@ -355,46 +355,38 @@ class CheckersGame:
             button.draw(self.screen)
 
     def draw_dev_panel(self):
-        # Step 1: Check if Dev Mode is active. If not, this function does nothing.
+        # Step 1: Check if Dev Mode is active. If not, do nothing.
         if not self.dev_mode:
             return
 
-        # Step 2: Define the panel's area and draw its dark background.
+        # Step 2: Define the panel's area and draw its background.
         panel_y = BOARD_SIZE
         panel_height = self.screen.get_height() - BOARD_SIZE
         pygame.draw.rect(self.screen, (10, 10, 30), (0, panel_y, self.screen.get_width(), panel_height))
         
-        # Step 3: Draw the title text "--- AI Analysis ---".
+        # Step 3: Draw the title text.
         title_surf = self.font.render("--- AI Analysis ---", True, WHITE)
         self.screen.blit(title_surf, (10, panel_y + 5))
         
-        # Step 4: The critical check. Does the `self.ai_top_moves` list have any data?
-        # This list is populated by the AI's search function *only* during the AI's turn.
+        # Step 4: Check if there is analysis data to display.
+        # This list is populated by the AI only when it is its turn.
         if not self.ai_top_moves:
-            # If the list is empty, it means it's currently the player's turn,
-            # or the AI is just beginning its calculation.
-            logger.debug("DRAW_DEV: self.ai_top_moves is empty. Nothing to draw in the panel.")
+            logger.debug("DRAW_DEV: self.ai_top_moves is empty. Panel will be blank.")
             return
 
-        # Step 5: If we have data, log that we are about to draw it.
+        # Step 5: If data exists, loop through the top moves and draw them.
         logger.debug(f"DRAW_DEV: Found {len(self.ai_top_moves)} analysis lines to render.")
         y_offset = 30
-        
-        # Loop through the top moves (or the first 10 if there are more).
         for i, (score, path) in enumerate(self.ai_top_moves[:10]):
-            # Step 5a: Format the move path from coordinates like [(2,1),(3,2)] to ACF notation like "9-14".
+            # 5a: Format the path from coordinates to ACF notation.
             move_str = self._format_move_path(path)
-            
-            # Step 5b: Create the full string for the line, e.g., "1. 9-14 18-22   Score: -100.00".
+            # 5b: Create the full text line.
             line = f"{i+1}. {move_str:<25} Score: {score:.2f}"
-            
-            # Step 5c: Render the string into a graphical text surface using the dev font.
+            # 5c: Render the text to a surface.
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
-            
-            # Step 5d: Blit (draw) the text surface onto the screen at its calculated position.
+            # 5d: Draw the surface onto the screen.
             self.screen.blit(text_surf, (20, panel_y + y_offset))
-            
-            # Step 5e: Move the y-coordinate down for the next line of text.
+            # 5e: Increment the y-position for the next line.
             y_offset += 13
 
     def draw(self):
@@ -410,37 +402,6 @@ class CheckersGame:
                     draw_row, draw_col = (ROWS - 1 - move[0], COLS - 1 - move[1]) if self.board_flipped else move
                     center_pos = (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2)
                     pygame.draw.circle(self.screen, (0, 255, 0), center_pos, 15)
-
-    def update(self):
-        if self.done:
-            return
-
-        # Start the AI's thinking process if it's its turn and it isn't already thinking.
-        if self.turn == self.ai_color and not self.ai_is_thinking:
-            self.start_ai_turn()
-
-        # Check if the AI's thinking process has finished.
-        try:
-            # get_nowait() will raise queue.Empty if the AI is still thinking.
-            best_move_path = self.ai_move_queue.get_nowait()
-            
-            logger.info(f"UPDATE: Move received from AI queue: {self._format_move_path(best_move_path)}")
-
-            if best_move_path:
-                # A valid path was found, apply it to the board.
-                self._apply_move_sequence(best_move_path)
-            elif best_move_path is None:
-                # A None value indicates the AI calculation failed.
-                logger.warning("AI calculation returned None. Forfeiting turn.")
-                self._change_turn()
-            else: # An empty list means the AI has no possible moves.
-                logger.warning("AI returned an empty list, meaning it is blocked. Forfeiting turn.")
-                self._change_turn()
-
-        except queue.Empty:
-            # This is the normal state while the game waits for the player or the AI.
-            # No action is needed.
-            pass
         
     def handle_events(self, events, app=None):
         for event in events:
@@ -453,4 +414,30 @@ class CheckersGame:
                         break 
                 if not clicked_button:
                     self._handle_click(event.pos)
+                    
+    def update(self):
+        if self.done:
+            return
+
+        # If it's the AI's turn and it's not already thinking, start the calculation.
+        if self.turn == self.ai_color and not self.ai_is_thinking:
+            self.start_ai_turn()
+
+        # Check if the AI has finished thinking and placed a move in the queue.
+        try:
+            best_move_path = self.ai_move_queue.get_nowait()
+            
+            if best_move_path:
+                logger.info(f"UPDATE: Move received from AI queue: {self._format_move_path(best_move_path)}. Applying.")
+                self._apply_move_sequence(best_move_path)
+            elif best_move_path is None:
+                logger.warning("AI calculation returned None. Forfeiting turn.")
+                self._change_turn()
+            else: # An empty list means the AI has no moves
+                logger.warning("AI returned an empty list, meaning it is blocked. Forfeiting turn.")
+                self._change_turn()
+
+        except queue.Empty:
+            # This is the normal state; do nothing and wait for the AI or player.
+            pass
 

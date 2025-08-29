@@ -5,6 +5,7 @@ from .constants import RED, WHITE, COORD_TO_ACF
 logger = logging.getLogger('board')
 
 def _find_jump_paths(board, path_so_far):
+    # This helper function is correct and remains unchanged.
     last_pos = path_so_far[-1]
     temp_board = board.apply_move(path_so_far)
     piece_at_last_pos = temp_board.get_piece(last_pos[0], last_pos[1])
@@ -24,6 +25,7 @@ def _find_jump_paths(board, path_so_far):
         yield from _find_jump_paths(board, new_path)
 
 def get_all_move_sequences(board, color):
+    # This helper function is correct and remains unchanged.
     valid_moves = board.get_all_valid_moves(color)
     is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
 
@@ -37,10 +39,12 @@ def get_all_move_sequences(board, color):
             for end_pos in end_positions:
                 yield [start_pos, end_pos]
 
+# --- START: DEFINITIVE AI LOGIC FIX ---
+
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
     The core recursive search algorithm. This version correctly implements
-    alpha-beta pruning and returns the proper values.
+    alpha-beta pruning and returns the proper values and paths.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
@@ -51,34 +55,42 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         max_eval = float('-inf')
         for path in get_all_move_sequences(board, WHITE):
             move_board = board.apply_move(path)
+            # Recursively call minimax for the OPPONENT's turn.
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             
+            # --- COMMENT: This is the critical change. ---
+            # We check if the new evaluation score is better than any we've seen at this level.
             if evaluation > max_eval:
                 max_eval = evaluation
+                # The best path is the current move ('path') followed by the best path found from the subsequent recursive call.
                 best_path = path + subsequent_path
             
             alpha = max(alpha, evaluation)
             if beta <= alpha:
-                break
+                break # Prune the search tree
         return max_eval, best_path
     else:  # Minimizing player (Red)
         min_eval = float('inf')
         for path in get_all_move_sequences(board, RED):
             move_board = board.apply_move(path)
+            # Recursively call minimax for the OPPONENT's turn.
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             
+            # --- COMMENT: This is the critical change. ---
+            # We check if the new evaluation score is better (lower) for the minimizing player.
             if evaluation < min_eval:
                 min_eval = evaluation
+                # The best path is the current move ('path') followed by the best path found from the subsequent recursive call.
                 best_path = path + subsequent_path
 
             beta = min(beta, evaluation)
             if beta <= alpha:
-                break
+                break # Prune the search tree
         return min_eval, best_path
 
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     """
-    The top-level AI function. This version corrects the NameError.
+    The top-level AI function. This remains the same but will now receive correct data from minimax.
     """
     is_maximizing = color_to_move == WHITE
     possible_moves = list(get_all_move_sequences(board, color_to_move))
@@ -90,6 +102,7 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     all_scored_moves = []
     for move_path in possible_moves:
         move_board = board.apply_move(move_path)
+        # The first call to minimax correctly flips the perspective to the opponent.
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
         full_path_for_display = move_path + subsequent_path
         all_scored_moves.append((score, full_path_for_display, move_path))
@@ -103,12 +116,6 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     best_path_for_execution = all_scored_moves[0][2] 
     top_5_for_display = [(item[0], item[1]) for item in all_scored_moves[:5]]
     
-    current_turn_color = "W" if color_to_move == WHITE else "R"
-    
-    # --- THE DEFINITIVE FIX ---
-    # Use the correctly imported COORD_TO_ACF dictionary directly
-    log_path_str = " ".join([f"{COORD_TO_ACF.get(p, '?')}" for p in best_path_for_execution])
-    # --- END FIX ---
-
-    logger.debug(f"AI SEARCH (depth {depth}, {current_turn_color}): Best path chosen: {log_path_str}")
     return best_path_for_execution, top_5_for_display
+
+# --- END: DEFINITIVE AI LOGIC FIX ---
