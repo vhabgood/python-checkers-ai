@@ -187,30 +187,8 @@ class CheckersGame:
         self.ai_thread = threading.Thread(target=self.run_ai_calculation, args=(color_to_move,), daemon=True)
         self.ai_thread.start()
 
-    def run_ai_calculation(self, color_to_move):
+    def run_ai_calculation(self, color_to_move): # Remove is_display_only
         try:
-            board_hash = self.board.hash
-            
-            if self.board.red_left + self.board.white_left > 20 and board_hash in self.opening_book:
-                move_path = self.opening_book[board_hash]
-                logger.info(f"DATABASE: AI found move in opening book: {self._format_move_path(move_path)}")
-                _, top_moves = get_ai_move_analysis(self.board, 1, color_to_move, evaluate_board)
-                self.ai_move_queue.put(move_path)
-                if top_moves:
-                    self.positional_score = top_moves[0][0]
-                    self.ai_top_moves = top_moves
-                return
-
-            if self.endgame_db and self.board.red_left + self.board.white_left <= 8 and board_hash in self.endgame_db:
-                db_entry = self.endgame_db[board_hash]
-                move_path = db_entry['move']
-                score = db_entry['score']
-                logger.info(f"DATABASE: AI found move in endgame tablebase: {self._format_move_path(move_path)} with score {score}")
-                self.ai_move_queue.put(move_path)
-                self.positional_score = score
-                self.ai_top_moves = [(score, move_path)]
-                return
-            
             best_move_path, top_moves = get_ai_move_analysis(self.board, self.ai_depth, color_to_move, evaluate_board)
             
             if best_move_path:
@@ -240,9 +218,9 @@ class CheckersGame:
         self.selected_piece = None
         self.turn = RED if self.turn == WHITE else WHITE
         self.board.turn = self.turn
-        self.ai_is_thinking = False # The turn is officially over, so reset the flag.
-        self._update_valid_moves()
-        logger.debug(f"...turn is now {constants.PLAYER_NAMES[self.turn]}. AI thinking flag set to False.")
+        self.ai_is_thinking = False
+        self._update_valid_moves()   
+        logger.debug(f"...turn is now {constants.PLAYER_NAMES[self.turn]}.")
 
     def _select(self, row, col):
         if self.selected_piece:

@@ -3,7 +3,7 @@ import pygame
 import logging
 import random
 import copy
-from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE
+from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE, COORD_TO_ACF
 from .piece import Piece
 
 logger = logging.getLogger('board')
@@ -198,7 +198,7 @@ class Board:
     def apply_move(self, path):
         """
         Applies a move sequence to a copy of the board and returns the new board state.
-        This is the single, authoritative simulation function for the AI.
+        Now with improved ACF logging for debugging.
         """
         temp_board = copy.deepcopy(self)
         start_pos = path[0]
@@ -207,29 +207,23 @@ class Board:
         if piece == 0:
             return temp_board
 
-        # --- BUG FIX: A jump is defined by the first step in the path, not the whole path. ---
         is_jump = abs(path[0][0] - path[1][0]) == 2
         
         end_pos = path[-1]
-        was_king = piece.king
         
-        # This logic is now correct because `is_jump` is properly identified.
         if is_jump:
             captured_pieces = []
             for i in range(len(path) - 1):
-                p_start = path[i]
-                p_end = path[i+1]
+                p_start, p_end = path[i], path[i+1]
                 mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
                 captured = temp_board.get_piece(mid_row, mid_col)
-                if captured:
-                    captured_pieces.append(captured)
+                if captured: captured_pieces.append(captured)
             temp_board._remove(captured_pieces)
         
         temp_board.move(piece, end_pos[0], end_pos[1])
         
-        promoted = not was_king and piece.king
+        promoted = (end_pos[0] == 0 or end_pos[0] == ROWS - 1) and not piece.king
 
-        # Determine if the turn should flip
         turn_ends = False
         if is_jump:
             if promoted:
@@ -238,16 +232,27 @@ class Board:
                 more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
                 if not more_jumps:
                     turn_ends = True
-        else: # It was a slide
+        else:
             turn_ends = True
 
         if turn_ends:
-            # This logic is correct as it flips the turn on the temporary board.
-            temp_board.turn = WHITE if temp_board.turn == RED else RED
+            temp_board.turn = WHITE if self.turn == RED else RED
         
-        # Concise debug log
+        # --- START: ACF LOGGING FIX ---
+        def format_path_for_log(log_path):
+            if not log_path: return ""
+            parts = []
+            for i in range(len(log_path) - 1):
+                start_acf = COORD_TO_ACF.get(log_path[i], '?')
+                end_acf = COORD_TO_ACF.get(log_path[i+1], '?')
+                separator = 'x' if abs(log_path[i][0] - log_path[i+1][0]) == 2 else '-'
+                parts.append(f"{start_acf}{separator}{end_acf}")
+            return " ".join(parts)
+
+        log_path_str = format_path_for_log(path)
         orig_turn = "W" if self.turn == WHITE else "R"
         final_turn = "W" if temp_board.turn == WHITE else "R"
-        logger.debug(f"SIM: Path {path}, Orig: {orig_turn}, Flip: {turn_ends}, Final: {final_turn}")
+        logger.debug(f"SIM: Path [{log_path_str}], Orig: {orig_turn}, Flip: {turn_ends}, Final: {final_turn}")
+        # --- END: ACF LOGGING FIX ---
                 
         return temp_board

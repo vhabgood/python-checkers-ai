@@ -20,27 +20,24 @@ def evaluate_board(board):
     red_pos_score = 0
     
     # Heuristics:
-    BACK_ROW_BONUS = 0.5
-    SIDE_PENALTY = -0.2
+    BACK_ROW_BONUS = 0.2
+    CENTER_CONTROL_BONUS = 0.1
     PROMOTION_PROGRESS_BONUS = 0.1
-    KING_ADVANTAGE_BONUS = 2.0 # Huge bonus for having kings when the opponent has none
+    KING_ADVANTAGE_BONUS = 0.7
 
+    # Evaluate White's pieces
     for piece in board.get_all_pieces(WHITE):
-        # Bonus for advancing pieces towards promotion
         white_pos_score += (ROWS - 1 - piece.row) * PROMOTION_PROGRESS_BONUS
-        # Penalty for pieces on the side
-        if piece.col == 0 or piece.col == COLS - 1:
-            white_pos_score += SIDE_PENALTY
+        if piece.row in {2, 3, 4, 5} and piece.col in {2, 3, 4, 5}:
+            white_pos_score += CENTER_CONTROL_BONUS
 
+    # Evaluate Red's pieces
     for piece in board.get_all_pieces(RED):
-        # Bonus for advancing pieces towards promotion
         red_pos_score += piece.row * PROMOTION_PROGRESS_BONUS
-        # Bonus for pieces defending the back rank
         if piece.row == 0:
             red_pos_score += BACK_ROW_BONUS
-        # Penalty for pieces on the side
-        if piece.col == 0 or piece.col == COLS - 1:
-            red_pos_score += SIDE_PENALTY
+        if piece.row in {2, 3, 4, 5} and piece.col in {2, 3, 4, 5}:
+            red_pos_score += CENTER_CONTROL_BONUS
 
     positional_score = white_pos_score - red_pos_score
 
@@ -52,7 +49,6 @@ def evaluate_board(board):
         king_advantage = -KING_ADVANTAGE_BONUS
 
     # --- Final Score Combination ---
-    # Material is weighted most heavily, followed by positional advantages.
     final_score = (material_score * 100) + positional_score + king_advantage
     
     return final_score
