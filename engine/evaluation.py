@@ -18,7 +18,7 @@ def evaluate_board(board):
     # --- Positional Scores ---
     white_pos_score = 0
     red_pos_score = 0
-    
+
     # --- COMMENT: These are the strategic concepts we're teaching the AI. ---
     PROMOTION_PROGRESS_BONUS = 0.1  # Reward for pieces nearing the king row.
     CENTER_CONTROL_BONUS = 0.1    # Reward for pieces in the center four columns.
@@ -48,5 +48,5 @@ def evaluate_board(board):
     # --- Final Score Combination ---
     # The material score is weighted most heavily.
     final_score = (material_score * 100) + positional_score + king_advantage
-    
+
     return final_score

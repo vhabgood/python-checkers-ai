@@ -355,39 +355,56 @@ class CheckersGame:
             button.draw(self.screen)
 
     def draw_dev_panel(self):
-        # Step 1: Check if Dev Mode is active. If not, do nothing.
+        # --- DEBUG TRAP: FUNCTION ENTRY ---
+        # This log will appear every frame, confirming the function is being called.
+        logger.debug("DRAW_DEV: --- DEV PANEL DRAW START ---")
+
+        # Step 1: Check if Dev Mode is active. If not, the function does nothing.
         if not self.dev_mode:
+            logger.debug("DRAW_DEV: Dev mode is OFF. Aborting draw.")
             return
 
-        # Step 2: Define the panel's area and draw its background.
+        # Step 2: Define the panel's area and draw its dark background.
         panel_y = BOARD_SIZE
         panel_height = self.screen.get_height() - BOARD_SIZE
         pygame.draw.rect(self.screen, (10, 10, 30), (0, panel_y, self.screen.get_width(), panel_height))
         
-        # Step 3: Draw the title text.
+        # Step 3: Draw the title text "--- AI Analysis ---".
         title_surf = self.font.render("--- AI Analysis ---", True, WHITE)
         self.screen.blit(title_surf, (10, panel_y + 5))
         
-        # Step 4: Check if there is analysis data to display.
-        # This list is populated by the AI only when it is its turn.
+        # --- DEBUG TRAP: DATA CHECK ---
+        # The critical check. Does the self.ai_top_moves list have any data?
+        # This list is populated by the AI's search function *only* during the AI's turn.
         if not self.ai_top_moves:
-            logger.debug("DRAW_DEV: self.ai_top_moves is empty. Panel will be blank.")
+            # If the list is empty, the panel should be blank. This is expected on the player's turn.
+            logger.debug("DRAW_DEV: self.ai_top_moves is EMPTY. Panel will be blank.")
             return
 
-        # Step 5: If data exists, loop through the top moves and draw them.
-        logger.debug(f"DRAW_DEV: Found {len(self.ai_top_moves)} analysis lines to render.")
+        # --- DEBUG TRAP: DATA CONTENT ---
+        # If we have data, log the turn state and how many lines we are about to draw.
+        current_turn_color = "White" if self.turn == WHITE else "Red"
+        logger.debug(f"DRAW_DEV: Turn is currently {current_turn_color}. Found {len(self.ai_top_moves)} analysis lines to render.")
+        
         y_offset = 30
         for i, (score, path) in enumerate(self.ai_top_moves[:10]):
-            # 5a: Format the path from coordinates to ACF notation.
+            # Step 5a: Format the move path to ACF notation (e.g., "9-14").
             move_str = self._format_move_path(path)
-            # 5b: Create the full text line.
+            
+            # Step 5b: Create the full text line.
             line = f"{i+1}. {move_str:<25} Score: {score:.2f}"
-            # 5c: Render the text to a surface.
+            
+            # --- DEBUG TRAP: LINE-BY-LINE CONTENT ---
+            # Log each line of text exactly as it's about to be drawn.
+            logger.debug(f"DRAW_DEV: Rendering line {i+1}: '{line}'")
+            
+            # Step 5c: Render and draw the text onto the screen.
             text_surf = self.dev_font.render(line, True, (200, 200, 200))
-            # 5d: Draw the surface onto the screen.
             self.screen.blit(text_surf, (20, panel_y + y_offset))
-            # 5e: Increment the y-position for the next line.
+            
             y_offset += 13
+        
+        logger.debug("DRAW_DEV: --- DEV PANEL DRAW END ---")
 
     def draw(self):
         self.screen.fill(constants.COLOR_BG)
