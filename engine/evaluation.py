@@ -23,7 +23,7 @@ def evaluate_board(board):
     BACK_ROW_BONUS = 0.2
     CENTER_CONTROL_BONUS = 0.1
     PROMOTION_PROGRESS_BONUS = 0.1
-    KING_ADVANTAGE_BONUS = 0.7
+    KING_ADVANTAGE_BONUS = 1.0
 
     # Evaluate White's pieces
     for piece in board.get_all_pieces(WHITE):

@@ -4,8 +4,10 @@ from .constants import RED, WHITE
 
 logger = logging.getLogger('board')
 
-# Helper functions must be defined before they are called.
 def _find_jump_paths(board, path_so_far):
+    """
+    Recursive helper to find all possible multi-jump paths.
+    """
     last_pos = path_so_far[-1]
     temp_board = board.apply_move(path_so_far)
     piece_at_last_pos = temp_board.get_piece(last_pos[0], last_pos[1])
@@ -25,6 +27,9 @@ def _find_jump_paths(board, path_so_far):
         yield from _find_jump_paths(board, new_path)
 
 def get_all_move_sequences(board, color):
+    """
+    Generator that finds all possible complete move sequences (including multi-jumps).
+    """
     valid_moves = board.get_all_valid_moves(color)
     is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
 
@@ -38,7 +43,7 @@ def get_all_move_sequences(board, color):
             for end_pos in end_positions:
                 yield [start_pos, end_pos]
 
-# --- START: CORRECTED AI LOGIC ---
+# --- START: DEFINITIVE AI LOGIC FIX ---
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
@@ -54,7 +59,7 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         max_eval = float('-inf')
         for path in get_all_move_sequences(board, WHITE):
             move_board = board.apply_move(path)
-            # The recursive call must be for the MINIMIZING player
+            # The recursive call must be for the MINIMIZING player (False)
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
@@ -67,7 +72,7 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         min_eval = float('inf')
         for path in get_all_move_sequences(board, RED):
             move_board = board.apply_move(path)
-            # The recursive call must be for the MAXIMIZING player
+            # The recursive call must be for the MAXIMIZING player (True)
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
@@ -90,7 +95,7 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
 
     all_scored_moves = []
     for move_path in possible_moves:
-        move_board = board.apply_move(move_path)
+        move_board = board.apply_move(path)
         # The first call to minimax correctly flips the perspective to the opponent
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
         full_path_for_display = move_path + subsequent_path
@@ -105,5 +110,9 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     top_5_for_display = [(item[0], item[1]) for item in all_scored_moves[:5]]
     
     current_turn_color = "W" if color_to_move == WHITE else "R"
-    logger.debug(f"AI SEARCH (depth {depth}, {current_turn_color}): Best path chosen: {best_path_for_execution}")
+    # Use a helper to format the path for the log
+    log_path_str = " ".join([f"{board.COORD_TO_ACF.get(p, '?')}" for p in best_path_for_execution])
+    logger.debug(f"AI SEARCH (depth {depth}, {current_turn_color}): Best path chosen: {log_path_str}")
     return best_path_for_execution, top_5_for_display
+
+# --- END: DEFINITIVE AI LOGIC FIX ---
