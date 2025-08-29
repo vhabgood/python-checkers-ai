@@ -39,7 +39,7 @@ def get_all_move_sequences(board, color):
             for end_pos in end_positions:
                 yield [start_pos, end_pos]
 
-# --- START: DEFINITIVE AI LOGIC FIX ---
+# engine/search.py
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
@@ -50,21 +50,20 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         return evaluate_func(board), []
 
     best_path = []
-
+    
     if maximizing_player:
         max_eval = float('-inf')
         for path in get_all_move_sequences(board, WHITE):
             move_board = board.apply_move(path)
-            # Recursively call minimax for the OPPONENT's turn.
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
-
+            
             # --- COMMENT: This is the critical change. ---
             # We check if the new evaluation score is better than any we've seen at this level.
             if evaluation > max_eval:
                 max_eval = evaluation
                 # The best path is the current move ('path') followed by the best path found from the subsequent recursive call.
                 best_path = path + subsequent_path
-
+            
             alpha = max(alpha, evaluation)
             if beta <= alpha:
                 break # Prune the search tree
@@ -73,9 +72,8 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         min_eval = float('inf')
         for path in get_all_move_sequences(board, RED):
             move_board = board.apply_move(path)
-            # Recursively call minimax for the OPPONENT's turn.
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
-
+            
             # --- COMMENT: This is the critical change. ---
             # We check if the new evaluation score is better (lower) for the minimizing player.
             if evaluation < min_eval:
@@ -87,7 +85,6 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             if beta <= alpha:
                 break # Prune the search tree
         return min_eval, best_path
-
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     """
     The top-level AI function. This remains the same but will now receive correct data from minimax.
