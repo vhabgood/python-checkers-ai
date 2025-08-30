@@ -33,12 +33,10 @@ def get_all_move_sequences(board, color):
             for end_pos in end_positions:
                 yield [start_pos, end_pos]
 
-# --- START: DEFINITIVE AI LOGIC FIX ---
-
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The core recursive search algorithm.
-    This version correctly finds the best score AND the best path.
+    The core recursive search algorithm. This version correctly implements
+    alpha-beta pruning and returns the proper values and paths.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
@@ -49,31 +47,35 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         max_eval = float('-inf')
         for path in get_all_move_sequences(board, WHITE):
             move_board = board.apply_move(path)
+            # Recursively call minimax for the OPPONENT's turn.
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             
+            # This is the critical change. We check if the new score is better.
             if evaluation > max_eval:
                 max_eval = evaluation
-                # The best path is the current move ('path') plus the best path found from the levels below.
+                # The best path is the current move ('path') plus the best path from the levels below.
                 best_path = path + subsequent_path
             
             alpha = max(alpha, evaluation)
             if beta <= alpha:
-                break
+                break # Prune the search tree
         return max_eval, best_path
     else:  # Minimizing player (Red)
         min_eval = float('inf')
         for path in get_all_move_sequences(board, RED):
             move_board = board.apply_move(path)
+            # Recursively call minimax for the OPPONENT's turn.
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             
+            # This is the critical change. We check if the new score is better (lower).
             if evaluation < min_eval:
                 min_eval = evaluation
-                # The best path is the current move ('path') plus the best path found from the levels below.
+                # The best path is the current move ('path') plus the best path from the levels below.
                 best_path = path + subsequent_path
 
             beta = min(beta, evaluation)
             if beta <= alpha:
-                break
+                break # Prune the search tree
         return min_eval, best_path
 
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
