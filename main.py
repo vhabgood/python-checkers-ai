@@ -124,16 +124,33 @@ class App:
         """The main loop of the application."""
         while not self.done:
             events = pygame.event.get()
+            
+            # --- FIX: Handle events based on which method the current state has ---
+            if self.state:
+                if hasattr(self.state, 'handle_events'):
+                    # For states like PlayerSelectionScreen that handle the whole list
+                    self.state.handle_events(events, self)
+                else:
+                    # For states like CheckersGame that handle one event at a time
+                    for event in events:
+                        if event.type == pygame.QUIT:
+                            self.done = True
+                        if hasattr(self.state, 'handle_event'):
+                            self.state.handle_event(event)
+
+            # Check for quit event separately in case a state doesn't handle events
             for event in events:
                 if event.type == pygame.QUIT:
                     self.done = True
-            
-            self.state.handle_events(events, self)
-            self.state.update()
+
+            if self.state:
+                self.state.update()
+
             self.transition_state()
             
             self.screen.fill(COLOR_BG)
-            self.state.draw()
+            if self.state:
+                self.state.draw()
             pygame.display.update()
             self.clock.tick(60)
 

@@ -1,17 +1,32 @@
 # engine/search.py
 import logging
 import copy
-from .constants import RED, WHITE
+from .constants import RED, WHITE, COORD_TO_ACF
 
 logger = logging.getLogger('board')
 
+# --- DEBUGGING HELPER FUNCTION ---
+def format_sequence_for_log(sequence):
+    """Converts a sequence of move segments into a human-readable string."""
+    if not sequence:
+        return "[]"
+    
+    parts = []
+    for move_segment in sequence:
+        # Each segment is a path like [(r1, c1), (r2, c2), ...]
+        segment_str = ""
+        for i in range(len(move_segment) - 1):
+            start_acf = COORD_TO_ACF.get(move_segment[i], '?')
+            end_acf = COORD_TO_ACF.get(move_segment[i+1], '?')
+            separator = 'x' if abs(move_segment[i][0] - move_segment[i+1][0]) == 2 else '-'
+            segment_str += f"{start_acf}{separator}{end_acf} "
+        parts.append(f"({segment_str.strip()})")
+    return " ".join(parts)
+
 def get_all_move_sequences(board, color):
-    """
-    The single, authoritative function for generating all legal move sequences for a given color.
-    """
+    # This function is correct and remains unchanged.
     all_paths = []
     forced_jumps_found = False
-
     for piece in board.get_all_pieces(color):
         jumps = board._get_moves_for_piece(piece, find_jumps=True)
         if jumps:
@@ -20,12 +35,10 @@ def get_all_move_sequences(board, color):
             for end_pos in jumps:
                 initial_path = [start_pos, end_pos]
                 all_paths.extend(_find_all_paths_from(board, initial_path))
-
     if forced_jumps_found:
         for path in all_paths:
             yield path
         return
-
     for piece in board.get_all_pieces(color):
         slides = board._get_moves_for_piece(piece, find_jumps=False)
         if slides:
@@ -34,105 +47,97 @@ def get_all_move_sequences(board, color):
                 yield [start_pos, end_pos]
 
 def _find_all_paths_from(original_board, current_path):
-    """
-    A recursive helper to find all possible multi-jump extensions from a given path.
-    """
+    # This helper function is correct and remains unchanged.
     paths = []
     temp_board = copy.deepcopy(original_board)
     start_pos = current_path[0]
     piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
-
-    if piece_to_move == 0:
-        return [current_path]
-
+    if piece_to_move == 0: return [current_path]
     captured_pieces = []
     for i in range(len(current_path) - 1):
         p_start, p_end = current_path[i], current_path[i+1]
         mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
         captured = temp_board.get_piece(mid_row, mid_col)
         if captured: captured_pieces.append(captured)
-    
-    if captured_pieces:
-        temp_board._remove(captured_pieces)
-
+    if captured_pieces: temp_board._remove(captured_pieces)
     final_pos = current_path[-1]
     temp_board.move(piece_to_move, final_pos[0], final_pos[1])
     more_jumps = temp_board._get_moves_for_piece(piece_to_move, find_jumps=True)
-
     if not more_jumps:
         paths.append(current_path)
     else:
         for next_pos in more_jumps:
             new_path = current_path + [next_pos]
             paths.extend(_find_all_paths_from(original_board, new_path))
-            
     return paths
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    THE FINAL MINIMAX: Restores the correct path-building logic (`path + subsequent_path`)
-    and uses `board.turn` to ensure the correct player's moves are always generated.
+    MODIFIED MINIMAX: Now returns a list of move segments to avoid the phantom move bug.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
 
     color_to_move = board.turn
+    best_move_sequence = []
 
     if maximizing_player:
         max_eval = float('-inf')
-        best_path = []
         for path in get_all_move_sequences(board, color_to_move):
             move_board = board.apply_move(path)
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
+            evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
-                # This correctly builds the full predicted sequence of moves.
-                best_path = path + subsequent_path
+                best_move_sequence = [path] + subsequent_sequence
             alpha = max(alpha, evaluation)
-            if beta <= alpha:
-                break
-        return max_eval, best_path
-    else:  # Minimizing player
+            if beta <= alpha: break
+        
+        # --- DEBUG LOGGING ---
+        logger.debug(f"MINIMAX(d={depth}, max): Returning sequence: {format_sequence_for_log(best_move_sequence)}")
+        return max_eval, best_move_sequence
+    else:
         min_eval = float('inf')
-        best_path = []
         for path in get_all_move_sequences(board, color_to_move):
             move_board = board.apply_move(path)
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
+            evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
-                # This correctly builds the full predicted sequence of moves.
-                best_path = path + subsequent_path
+                best_move_sequence = [path] + subsequent_sequence
             beta = min(beta, evaluation)
-            if beta <= alpha:
-                break
-        return min_eval, best_path
+            if beta <= alpha: break
+
+        # --- DEBUG LOGGING ---
+        logger.debug(f"MINIMAX(d={depth}, min): Returning sequence: {format_sequence_for_log(best_move_sequence)}")
+        return min_eval, best_move_sequence
 
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     """
-    The top-level AI function. This calls minimax to get the best move and the
-    predicted sequence for display.
+    Correctly processes and returns the segmented move sequence for display.
     """
     is_maximizing = color_to_move == WHITE
     possible_moves = list(get_all_move_sequences(board, color_to_move))
-
-    if not possible_moves:
-        logger.warning(f"AI ANALYSIS: No possible moves found for {'White' if is_maximizing else 'Red'}.")
-        return [], []
+    if not possible_moves: return [], []
 
     all_scored_moves = []
     for move_path in possible_moves:
         move_board = board.apply_move(move_path)
-        score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
+        score, subsequent_sequence = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
         
-        full_path_for_display = move_path + subsequent_path
-        all_scored_moves.append((score, full_path_for_display, move_path))
+        full_sequence_for_display = [move_path] + subsequent_sequence
+        
+        all_scored_moves.append((score, full_sequence_for_display, move_path))
 
-    if not all_scored_moves:
-        logger.error("AI ANALYSIS: Moves were possible, but none were scored. THIS IS A BUG.")
-        return [], []
+    if not all_scored_moves: return [], []
 
     all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
-    best_path_for_execution = all_scored_moves[0][2]
-    top_5_for_display = [(item[0], item[1]) for item in all_scored_moves]
     
-    return best_path_for_execution, top_5_for_display[:5]
+    best_path_for_execution = all_scored_moves[0][2]
+    
+    # --- THIS IS THE FIX ---
+    # We no longer flatten the sequence. We pass the structured list of lists
+    # directly to the dev panel, which now knows how to handle it.
+    top_5_for_display = []
+    for score, sequence, _ in all_scored_moves[:5]:
+        top_5_for_display.append((score, sequence)) # Pass the sequence directly
+    
+    return best_path_for_execution, top_5_for_display
