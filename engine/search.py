@@ -4,78 +4,103 @@ from .constants import RED, WHITE, COORD_TO_ACF
 
 logger = logging.getLogger('board')
 
-# These two helper functions are correct and remain unchanged.
-def _find_jump_paths(board, path_so_far):
+def _find_jump_paths(board, path_so_far, piece):
+    """
+    Recursively finds all possible multi-jump sequences for a single piece.
+    It simulates jumps on a temporary board copy without changing the turn state.
+    """
     last_pos = path_so_far[-1]
-    temp_board = board.apply_move(path_so_far)
+    
+    # Simulate the path so far on a fresh copy to check for more jumps
+    temp_board = copy.deepcopy(board)
+    
+    # Remove pieces captured along the path so far
+    captured_on_path = []
+    for i in range(len(path_so_far) - 1):
+        p_start, p_end = path_so_far[i], path_so_far[i+1]
+        mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
+        captured = temp_board.get_piece(mid_row, mid_col)
+        if captured: captured_on_path.append(captured)
+    temp_board._remove(captured_on_path)
+    
+    # Move the piece to its current position in the sequence
+    temp_board.move(temp_board.get_piece(piece.row, piece.col), last_pos[0], last_pos[1])
+
+    # Now, check for more jumps from this new position
     piece_at_last_pos = temp_board.get_piece(last_pos[0], last_pos[1])
-    if piece_at_last_pos == 0 or temp_board.turn != board.turn:
-        yield path_so_far
-        return
     more_jumps = temp_board._get_moves_for_piece(piece_at_last_pos, find_jumps=True)
+
+    # If there are no more jumps, this path is complete.
     if not more_jumps:
         yield path_so_far
         return
+
+    # If there are more jumps, explore them recursively.
     for next_pos in more_jumps:
         new_path = path_so_far + [next_pos]
-        yield from _find_jump_paths(board, new_path)
+        yield from _find_jump_paths(board, new_path, piece)
+
 
 def get_all_move_sequences(board, color):
-    valid_moves = board.get_all_valid_moves(color)
-    is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
-    if is_jump:
-        for start_pos, end_positions in valid_moves.items():
-            if any(end_positions.values()):
-                for end_pos in end_positions:
-                    yield from _find_jump_paths(board, [start_pos, end_pos])
-    else:
-        for start_pos, end_positions in valid_moves.items():
-            for end_pos in end_positions:
-                yield [start_pos, end_pos]
+    """
+    The main move generation function. It correctly finds all legal move sequences
+    (slides or multi-jumps) for a given color.
+    """
+    all_pieces = board.get_all_pieces(color)
+    
+    # First, check if any jumps are available for any piece.
+    forced_jumps = []
+    for piece in all_pieces:
+        jumps = board._get_moves_for_piece(piece, find_jumps=True)
+        if jumps:
+            forced_jumps.append((piece, jumps))
+    
+    # If jumps exist, only generate jump sequences (mandatory jump rule).
+    if forced_jumps:
+        for piece, jumps in forced_jumps:
+            for end_pos in jumps:
+                # Start the recursive search for each initial jump.
+                yield from _find_jump_paths(board, [ (piece.row, piece.col), end_pos ], piece)
+        return
+
+    # If no jumps are found, generate all simple slide moves.
+    for piece in all_pieces:
+        slides = board._get_moves_for_piece(piece, find_jumps=False)
+        if slides:
+            for end_pos in slides:
+                yield [ (piece.row, piece.col), end_pos ]
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
-    """
-    The core recursive search algorithm. This version correctly implements
-    alpha-beta pruning and returns the proper values and paths.
-    """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
 
-    best_path = []
-    
     if maximizing_player:
         max_eval = float('-inf')
-        for path in get_all_move_sequences(board, WHITE):
-            move_board = board.apply_move(path)
-            # Recursively call minimax for the OPPONENT's turn.
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
-            
-            # This is the critical change. We check if the new score is better.
+        best_path = []
+        for move_path in get_all_move_sequences(board, WHITE): # AI is WHITE
+            new_board = board.apply_move(move_path)
+            # CORRECTED LINE: The last parameter is now 'False'
+            evaluation, path = minimax(new_board, depth - 1, alpha, beta, False, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
-                # The best path is the current move ('path') plus the best path from the levels below.
-                best_path = path + subsequent_path
-            
+                best_path = move_path + path
             alpha = max(alpha, evaluation)
             if beta <= alpha:
-                break # Prune the search tree
+                break
         return max_eval, best_path
-    else:  # Minimizing player (Red)
+    else: # Minimizing player
         min_eval = float('inf')
-        for path in get_all_move_sequences(board, RED):
-            move_board = board.apply_move(path)
-            # Recursively call minimax for the OPPONENT's turn.
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
-            
-            # This is the critical change. We check if the new score is better (lower).
+        best_path = []
+        for move_path in get_all_move_sequences(board, RED): # Player is RED
+            new_board = board.apply_move(move_path)
+            # CORRECTED LINE: The last parameter is now 'True'
+            evaluation, path = minimax(new_board, depth - 1, alpha, beta, True, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
-                # The best path is the current move ('path') plus the best path from the levels below.
-                best_path = path + subsequent_path
-
+                best_path = move_path + path
             beta = min(beta, evaluation)
             if beta <= alpha:
-                break # Prune the search tree
+                break
         return min_eval, best_path
 
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):

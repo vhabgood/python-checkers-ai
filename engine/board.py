@@ -213,62 +213,69 @@ class Board:
 
     def apply_move(self, path):
         """
-        Applies a move sequence to a copy of the board and returns the new board state.
-        Now with improved ACF logging for debugging.
+        Applies a full move sequence to a DEEP COPY of the board, flips the turn,
+        and returns the new board state. This is used exclusively by the minimax
+        search for simulating future turns.
         """
+        # Create a completely independent copy of the board for simulation.
         temp_board = copy.deepcopy(self)
+        
+        # Get the piece from the starting position on the new board
         start_pos = path[0]
-        piece = temp_board.get_piece(start_pos[0], start_pos[1])
+        piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
 
-        if piece == 0:
+        # It's possible for a path to be invalid during deep simulation; handle safely.
+        if piece_to_move == 0:
+            logger.error(f"APPLY_MOVE: Attempted to move from an empty square at {start_pos} for path {path}.")
+            # Return the unchanged board to prevent a crash.
             return temp_board
 
-        is_jump = abs(path[0][0] - path[1][0]) == 2
-        
-        end_pos = path[-1]
-        
-        if is_jump:
-            captured_pieces = []
-            for i in range(len(path) - 1):
-                p_start, p_end = path[i], path[i+1]
-                mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
+        # Handle captures for the entire path
+        captured_pieces = []
+        for i in range(len(path) - 1):
+            p_start, p_end = path[i], path[i+1]
+            # A jump is a move of 2 rows
+            if abs(p_start[0] - p_end[0]) == 2:
+                mid_row = (p_start[0] + p_end[0]) // 2
+                mid_col = (p_start[1] + p_end[1]) // 2
                 captured = temp_board.get_piece(mid_row, mid_col)
-                if captured: captured_pieces.append(captured)
+                if captured:
+                    captured_pieces.append(captured)
+        
+        if captured_pieces:
             temp_board._remove(captured_pieces)
-        
-        temp_board.move(piece, end_pos[0], end_pos[1])
-        
-        promoted = (end_pos[0] == 0 or end_pos[0] == ROWS - 1) and not piece.king
 
-        turn_ends = False
-        if is_jump:
-            if promoted:
-                turn_ends = True
-            else:
-                more_jumps = temp_board._get_moves_for_piece(piece, find_jumps=True)
-                if not more_jumps:
-                    turn_ends = True
-        else:
-            turn_ends = True
-
-        if turn_ends:
-            temp_board.turn = WHITE if self.turn == RED else RED
+        # Move the piece to its final destination
+        final_pos = path[-1]
+        temp_board.move(piece_to_move, final_pos[0], final_pos[1])
         
-        # --- START: ACF LOGGING FIX ---
-        def format_path_for_log(log_path):
-            if not log_path: return ""
-            parts = []
-            for i in range(len(log_path) - 1):
-                start_acf = COORD_TO_ACF.get(log_path[i], '?')
-                end_acf = COORD_TO_ACF.get(log_path[i+1], '?')
-                separator = 'x' if abs(log_path[i][0] - log_path[i+1][0]) == 2 else '-'
-                parts.append(f"{start_acf}{separator}{end_acf}")
-            return " ".join(parts)
+        # CRITICAL: After the move is complete, always flip the turn for the simulation.
+        temp_board.turn = WHITE if temp_board.turn == RED else RED
+        temp_board.hash ^= temp_board.zobrist_table['turn'] # Update the hash for the new turn
 
-        log_path_str = format_path_for_log(path)
-        orig_turn = "W" if self.turn == WHITE else "R"
-        final_turn = "W" if temp_board.turn == WHITE else "R"
-        logger.debug(f"SIM: Path [{log_path_str}], Orig: {orig_turn}, Flip: {turn_ends}, Final: {final_turn}")
-        # --- END: ACF LOGGING FIX ---
-                
+        return temp_board
+    
+    # Add this new method inside the Board class in engine/board.py
+
+    def _simulate_path(self, path):
+        """
+        Simulates applying a path to a deep copy of the board WITHOUT changing the turn.
+        This is used for internal checks, like finding multi-jumps.
+        """
+        temp_board = copy.deepcopy(self)
+        for i in range(len(path) - 1):
+            start_pos = path[i]
+            end_pos = path[i+1]
+            piece = temp_board.get_piece(start_pos[0], start_pos[1])
+            if piece == 0: continue
+
+            is_jump = abs(start_pos[0] - end_pos[0]) == 2
+            if is_jump:
+                captured_row = (start_pos[0] + end_pos[0]) // 2
+                captured_col = (start_pos[1] + end_pos[1]) // 2
+                captured_piece = temp_board.get_piece(captured_row, captured_col)
+                if captured_piece != 0:
+                    temp_board._remove([captured_piece])
+            
+            temp_board.move(piece, end_pos[0], end_pos[1])
         return temp_board
