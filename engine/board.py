@@ -213,46 +213,48 @@ class Board:
 
     def apply_move(self, path):
         """
-        Applies a full move sequence to a DEEP COPY of the board, flips the turn,
-        and returns the new board state. This is used exclusively by the minimax
-        search for simulating future turns.
+        Applies a move sequence to a copy of the board and returns the new board state.
+        This version includes debugging traps to catch logic errors.
         """
-        # Create a completely independent copy of the board for simulation.
+        original_turn = self.turn
         temp_board = copy.deepcopy(self)
         
-        # Get the piece from the starting position on the new board
         start_pos = path[0]
         piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
 
-        # It's possible for a path to be invalid during deep simulation; handle safely.
         if piece_to_move == 0:
             logger.error(f"APPLY_MOVE: Attempted to move from an empty square at {start_pos} for path {path}.")
-            # Return the unchanged board to prevent a crash.
             return temp_board
 
-        # Handle captures for the entire path
         captured_pieces = []
         for i in range(len(path) - 1):
             p_start, p_end = path[i], path[i+1]
-            # A jump is a move of 2 rows
             if abs(p_start[0] - p_end[0]) == 2:
-                mid_row = (p_start[0] + p_end[0]) // 2
-                mid_col = (p_start[1] + p_end[1]) // 2
+                mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
                 captured = temp_board.get_piece(mid_row, mid_col)
-                if captured:
-                    captured_pieces.append(captured)
+                if captured: captured_pieces.append(captured)
         
         if captured_pieces:
             temp_board._remove(captured_pieces)
 
-        # Move the piece to its final destination
         final_pos = path[-1]
         temp_board.move(piece_to_move, final_pos[0], final_pos[1])
         
-        # CRITICAL: After the move is complete, always flip the turn for the simulation.
+        # --- THIS IS THE TRAP ---
+        # The turn MUST always be flipped after a move is simulated for the AI.
         temp_board.turn = WHITE if temp_board.turn == RED else RED
-        temp_board.hash ^= temp_board.zobrist_table['turn'] # Update the hash for the new turn
+        temp_board.hash ^= temp_board.zobrist_table['turn']
 
+        # Add a detailed log message for verification.
+        logger.debug(
+            f"APPLY_MOVE_TRAP: Path {path} simulated. "
+            f"Original Turn: {'W' if original_turn == WHITE else 'R'}, "
+            f"New Turn: {'W' if temp_board.turn == WHITE else 'R'}"
+        )
+
+        # The assert statement will crash the program if the turn was not flipped.
+        assert temp_board.turn != original_turn, "FATAL: apply_move FAILED to flip the turn!"
+        
         return temp_board
     
     # Add this new method inside the Board class in engine/board.py
