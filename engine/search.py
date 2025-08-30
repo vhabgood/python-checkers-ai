@@ -4,31 +4,25 @@ from .constants import RED, WHITE, COORD_TO_ACF
 
 logger = logging.getLogger('board')
 
+# These two helper functions are correct and remain unchanged.
 def _find_jump_paths(board, path_so_far):
-    # This helper function is correct and remains unchanged.
     last_pos = path_so_far[-1]
     temp_board = board.apply_move(path_so_far)
     piece_at_last_pos = temp_board.get_piece(last_pos[0], last_pos[1])
-
     if piece_at_last_pos == 0 or temp_board.turn != board.turn:
         yield path_so_far
         return
-
     more_jumps = temp_board._get_moves_for_piece(piece_at_last_pos, find_jumps=True)
-
     if not more_jumps:
         yield path_so_far
         return
-
     for next_pos in more_jumps:
         new_path = path_so_far + [next_pos]
         yield from _find_jump_paths(board, new_path)
 
 def get_all_move_sequences(board, color):
-    # This helper function is correct and remains unchanged.
     valid_moves = board.get_all_valid_moves(color)
     is_jump = any(any(val for val in v.values()) for v in valid_moves.values())
-
     if is_jump:
         for start_pos, end_positions in valid_moves.items():
             if any(end_positions.values()):
@@ -39,12 +33,12 @@ def get_all_move_sequences(board, color):
             for end_pos in end_positions:
                 yield [start_pos, end_pos]
 
-# engine/search.py
+# --- START: DEFINITIVE AI LOGIC FIX ---
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The core recursive search algorithm. This version correctly implements
-    alpha-beta pruning and returns the proper values and paths.
+    The core recursive search algorithm.
+    This version correctly finds the best score AND the best path.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
@@ -57,16 +51,14 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             move_board = board.apply_move(path)
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             
-            # --- COMMENT: This is the critical change. ---
-            # We check if the new evaluation score is better than any we've seen at this level.
             if evaluation > max_eval:
                 max_eval = evaluation
-                # The best path is the current move ('path') followed by the best path found from the subsequent recursive call.
+                # The best path is the current move ('path') plus the best path found from the levels below.
                 best_path = path + subsequent_path
             
             alpha = max(alpha, evaluation)
             if beta <= alpha:
-                break # Prune the search tree
+                break
         return max_eval, best_path
     else:  # Minimizing player (Red)
         min_eval = float('inf')
@@ -74,45 +66,52 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
             move_board = board.apply_move(path)
             evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             
-            # --- COMMENT: This is the critical change. ---
-            # We check if the new evaluation score is better (lower) for the minimizing player.
             if evaluation < min_eval:
                 min_eval = evaluation
-                # The best path is the current move ('path') followed by the best path found from the subsequent recursive call.
+                # The best path is the current move ('path') plus the best path found from the levels below.
                 best_path = path + subsequent_path
 
             beta = min(beta, evaluation)
             if beta <= alpha:
-                break # Prune the search tree
+                break
         return min_eval, best_path
+
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     """
-    The top-level AI function. This remains the same but will now receive correct data from minimax.
+    The top-level AI function. This version correctly handles the (score, path)
+    tuple returned by the new minimax function.
     """
     is_maximizing = color_to_move == WHITE
     possible_moves = list(get_all_move_sequences(board, color_to_move))
 
     if not possible_moves:
-        logger.warning(f"AI SEARCH: No possible moves found for {'White' if is_maximizing else 'Red'}.")
+        logger.warning(f"AI ANALYSIS: No possible moves found for {'White' if is_maximizing else 'Red'}.")
         return [], []
 
     all_scored_moves = []
     for move_path in possible_moves:
         move_board = board.apply_move(move_path)
-        # The first call to minimax correctly flips the perspective to the opponent.
+        # Call the corrected minimax, which returns both score and the full subsequent path
         score, subsequent_path = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
+        
+        # The full path for display is the AI's first move plus the predicted continuation.
         full_path_for_display = move_path + subsequent_path
+        
+        # Store the score, the full path for display, and just the first move for execution.
         all_scored_moves.append((score, full_path_for_display, move_path))
 
     if not all_scored_moves:
-        logger.error("AI SEARCH: Moves were possible, but none were scored. This indicates a search error.")
+        logger.error("AI ANALYSIS: Moves were possible, but none were scored. THIS IS A BUG.")
         return [], []
 
     all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
-
-    best_path_for_execution = all_scored_moves[0][2]
-    top_5_for_display = [(item[0], item[1]) for item in all_scored_moves[:5]]
-
-    return best_path_for_execution, top_5_for_display
+    
+    # The move to execute is just the first part of the best path.
+    best_path_for_execution = all_scored_moves[0][2] 
+    
+    # The paths for display are the full sequences.
+    top_5_for_display = [(item[0], item[1]) for item in all_scored_moves]
+    
+    return best_path_for_execution, top_5_for_display[0:5]
 
 # --- END: DEFINITIVE AI LOGIC FIX ---
