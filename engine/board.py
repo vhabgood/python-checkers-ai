@@ -21,6 +21,8 @@ class Board:
         self.create_board()
         self.zobrist_table = self._init_zobrist()
         self.hash = self._compute_hash()
+        # --- NEW: History tracking for the undo feature ---
+        self.history = [copy.deepcopy(self.board)]
         
     def _init_zobrist(self):
         """Initializes the Zobrist table with random numbers."""
@@ -72,8 +74,7 @@ class Board:
 
     def move(self, piece, row, col):
         """
-        Moves a piece on the board and updates its state. This modifies the
-        current board object.
+        Moves a piece and now saves the new board state to the history.
         """
         old_key = (piece.row, piece.col, piece.color, piece.king)
         self.hash ^= self.zobrist_table[old_key]
@@ -91,6 +92,9 @@ class Board:
         
         new_key = (row, col, piece.color, piece.king)
         self.hash ^= self.zobrist_table[new_key]
+
+        # --- NEW: Add the new state to the history ---
+        self.history.append(copy.deepcopy(self.board))
 
     def _remove(self, pieces):
         """Removes pieces from the board (after a capture)."""
@@ -123,14 +127,29 @@ class Board:
             return WHITE if self.turn == RED else RED
         return None
 
-    def draw(self, win, font, show_nums, flipped):
-        """Draws the entire board and all pieces."""
+    def draw(self, win, font, show_nums, flipped, valid_moves):
+        """Draws the entire board, pieces, and now highlights for valid moves."""
         self.draw_squares(win)
+
+        # --- FIX: Draw highlights for valid moves ---
+        if valid_moves:
+            for move in valid_moves:
+                row, col = move
+                
+                # Create a transparent surface for the highlight
+                highlight_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                # Fill with a semi-transparent color
+                highlight_surface.fill((60, 120, 200, 100)) # Blue with 100/255 alpha
+                
+                # Blit the highlight onto the correct square
+                win.blit(highlight_surface, (col * SQUARE_SIZE, row * SQUARE_SIZE))
+
         for row in range(ROWS):
             for col in range(COLS):
                 piece = self.board[row][col]
                 if piece != 0:
                     piece.draw(win)
+        
         if show_nums:
             self._draw_board_numbers(win, font, flipped)
 
@@ -268,3 +287,18 @@ class Board:
             
             temp_board.move(piece, end_pos[0], end_pos[1])
         return temp_board
+        
+    def recalculate_pieces(self):
+        """Recalculates piece counts after an undo."""
+        self.red_left = self.white_left = 0
+        self.red_kings = self.white_kings = 0
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.get_piece(r,c)
+                if piece != 0:
+                    if piece.color == RED:
+                        self.red_left += 1
+                        if piece.king: self.red_kings += 1
+                    else:
+                        self.white_left += 1
+                        if piece.king: self.white_kings += 1

@@ -21,6 +21,7 @@ GREY = (128, 128, 128)
 YELLOW = (255, 255, 0) 
 COORD_TO_ACF = {}
 ACF_TO_COORD = {}
+DARK_YELLOW = (200, 200, 0)
 square_num = 1
 for r in range(ROWS):
     for c in range(COLS):
