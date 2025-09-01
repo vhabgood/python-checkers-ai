@@ -33,15 +33,23 @@ class CheckersGame:
         self.large_font = pygame.font.SysFont(None, 24)
         self.font = pygame.font.SysFont(None, 20)
         
+        self.ai_depth = DEFAULT_AI_DEPTH
+
+        # --- FIX: Final button and UI element layout ---
         button_width = 180
         panel_x = BOARD_SIZE + 10
+        button_y_start = self.screen.get_height() - 40
         self.buttons = [
-            Button("Dev Mode", (panel_x, self.screen.get_height() - 40), (button_width, 30), self.toggle_dev_mode),
-            Button("Board Numbers", (panel_x, self.screen.get_height() - 80), (button_width, 30), self.toggle_board_numbers),
-            Button("Undo", (panel_x, 150), (button_width, 30), self.undo_move),
-            Button("Reset", (panel_x, 190), (button_width, 30), self.reset_game),
-            Button("Force AI Move", (panel_x, 230), (button_width, 30), self.force_ai_move),
-            Button("Export to PDN", (panel_x, 270), (button_width, 30), self.export_to_pdn)
+            # Buttons stacked from the bottom up
+            Button("Dev Mode", (panel_x, button_y_start), (button_width, 30), self.toggle_dev_mode),
+            Button("Board Numbers", (panel_x, button_y_start - 40), (button_width, 30), self.toggle_board_numbers),
+            Button("Export to PDN", (panel_x, button_y_start - 80), (button_width, 30), self.export_to_pdn),
+            Button("Force AI Move", (panel_x, button_y_start - 120), (button_width, 30), self.force_ai_move),
+            Button("Reset", (panel_x, button_y_start - 160), (button_width, 30), self.reset_game),
+            Button("Undo", (panel_x, button_y_start - 200), (button_width, 30), self.undo_move),
+            # AI Depth buttons are separate and positioned relative to the Undo button
+            Button("-", (panel_x + 100, button_y_start - 235), (30, 30), self.decrease_ai_depth),
+            Button("+", (panel_x + 140, button_y_start - 235), (30, 30), self.increase_ai_depth)
         ]
 
         self.ai_is_thinking = False
@@ -49,11 +57,9 @@ class CheckersGame:
         self.ai_top_moves = []
         self.ai_best_move_for_execution = None
         self.force_ai_flag = False
-        
-        # --- NEW: On-screen feedback system ---
         self.feedback_message = ""
         self.feedback_timer = 0
-        self.feedback_color = (180, 220, 180) # Default to green for success
+        self.feedback_color = (180, 220, 180)
 
     def _coord_to_acf(self, coord):
         return str(constants.COORD_TO_ACF.get(coord, "??"))
@@ -73,8 +79,9 @@ class CheckersGame:
         threading.Thread(target=self.run_ai_calculation, args=(color_to_move,)).start()
 
     def run_ai_calculation(self, color_to_move):
+        logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
         board_copy = copy.deepcopy(self.board)
-        best_move, top_moves = get_ai_move_analysis(board_copy, DEFAULT_AI_DEPTH, color_to_move, evaluate_board)
+        best_move, top_moves = get_ai_move_analysis(board_copy, self.ai_depth, color_to_move, evaluate_board)
         self.ai_move_queue.put({'best': best_move, 'top': top_moves})
 
     def _change_turn(self):
@@ -116,7 +123,6 @@ class CheckersGame:
     def update(self):
         if self.done: return
         
-        # --- NEW: Update feedback timer ---
         if self.feedback_timer > 0:
             self.feedback_timer -= 1
         else:
@@ -140,12 +146,8 @@ class CheckersGame:
 
     def draw(self):
         self.screen.fill((40, 40, 40))
-        
-        # --- FIX: Pass the valid_moves dictionary to the board's draw method ---
-        # We only pass the moves if a piece is selected by the player.
         moves_to_highlight = self.valid_moves.get((self.selected_piece.row, self.selected_piece.col)) if self.selected_piece else {}
         self.board.draw(self.screen, self.font, self.show_board_numbers, self.board_flipped, moves_to_highlight)
-        
         self.draw_side_panel()
         if self.dev_mode:
             self.draw_dev_panel()
@@ -165,15 +167,24 @@ class CheckersGame:
         turn_surface = self.large_font.render(turn_text_str, True, (255, 255, 255))
         self.screen.blit(turn_surface, (panel_x + 10, 15))
 
-        # --- FIX: Display "AI is thinking..." message ---
-        if self.ai_is_thinking:
+        # --- FIX: Position "AI thinking" and feedback messages ---
+        y_pos_after_turn = 50
+        if self.feedback_timer > 0 and self.feedback_message:
+            feedback_surface = self.font.render(self.feedback_message, True, self.feedback_color)
+            self.screen.blit(feedback_surface, (panel_x + 10, y_pos_after_turn))
+        elif self.ai_is_thinking:
             thinking_text = self.large_font.render("AI is thinking...", True, (255, 255, 0))
-            self.screen.blit(thinking_text, (panel_x + 10, 80))
-
-        history_title = self.large_font.render("Move History:", True, (200, 200, 200))
-        self.screen.blit(history_title, (panel_x + 10, 320))
-        y_offset = 350
+            self.screen.blit(thinking_text, (panel_x + 10, y_pos_after_turn))
         
+        # --- FIX: Move History now drawn in the correct location ---
+        history_y_start = 80
+        history_title = self.large_font.render("Move History:", True, (200, 200, 200))
+        self.screen.blit(history_title, (panel_x + 10, history_y_start))
+        y_offset = history_y_start + 30
+        
+        # This is the y-coordinate of the topmost button in the bottom stack
+        button_boundary = self.buttons[-3].rect.top 
+
         for i in range(0, len(self.move_history), 2):
             move_num = i // 2 + 1
             white_move = self.move_history[i]
@@ -182,18 +193,22 @@ class CheckersGame:
             move_surface = self.font.render(line, True, (220, 220, 220))
             self.screen.blit(move_surface, (panel_x + 15, y_offset))
             y_offset += 20
-            if y_offset > self.screen.get_height() - 100: break
+            # Stop drawing if we run out of space before the buttons
+            if y_offset > button_boundary - 20: break
+            
+        # --- FIX: Display AI Depth above the Undo button ---
+        ai_depth_y = self.buttons[-1].rect.top - 30
+        depth_text = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
+        self.screen.blit(depth_text, (panel_x + 10, ai_depth_y))
 
-        if self.feedback_timer > 0 and self.feedback_message:
-            feedback_surface = self.font.render(self.feedback_message, True, self.feedback_color)
-            self.screen.blit(feedback_surface, (panel_x + 10, 50))
 
     def draw_dev_panel(self):
-        panel_height = 150
-        panel_y = self.screen.get_height() - panel_height
-        panel_rect = pygame.Rect(0, panel_y, self.screen.get_width(), panel_height)
+        panel_height = self.screen.get_height() - BOARD_SIZE
+        if panel_height <= 0: return
+        panel_y = BOARD_SIZE
+        panel_rect = pygame.Rect(0, panel_y, BOARD_SIZE, panel_height)
         pygame.draw.rect(self.screen, (30, 30, 30), panel_rect)
-        pygame.draw.line(self.screen, (100, 100, 100), (0, panel_y), (self.screen.get_width(), panel_y), 2)
+        pygame.draw.line(self.screen, (100, 100, 100), (0, panel_y), (BOARD_SIZE, panel_y), 2)
 
         if not self.ai_top_moves: return
 
@@ -225,6 +240,14 @@ class CheckersGame:
                     highlight_surface.fill(highlight_color)
                     self.screen.blit(highlight_surface, (dest_square_coord[1] * SQUARE_SIZE, dest_square_coord[0] * SQUARE_SIZE))
                     current_alpha = max(0, current_alpha - alpha_step * 4)
+
+    def increase_ai_depth(self):
+        self.ai_depth = min(9, self.ai_depth + 1)
+        logger.info(f"AI depth increased to {self.ai_depth}")
+
+    def decrease_ai_depth(self):
+        self.ai_depth = max(5, self.ai_depth - 1)
+        logger.info(f"AI depth decreased to {self.ai_depth}")
 
     def toggle_dev_mode(self): self.dev_mode = not self.dev_mode
     def toggle_board_numbers(self): self.show_board_numbers = not self.show_board_numbers
@@ -268,16 +291,13 @@ class CheckersGame:
                     if i % 2 == 0: move_str += f"{i//2 + 1}. {move} "
                     else: move_str += f"{move} "
                 f.write(move_str.strip() + " *\n")
-            logger.info(f"Game successfully exported to {filename}")
-            # --- FIX 6: Set feedback message ---
             self.feedback_message = f"Saved to {filename}"
-            self.feedback_timer = 180 # 3 seconds at 60fps
-            self.feedback_color = (180, 220, 180) # Green
+            self.feedback_timer = 180
+            self.feedback_color = (180, 220, 180)
         except Exception as e:
-            logger.error(f"Failed to export PDN file: {e}")
             self.feedback_message = f"Error saving PDN!"
             self.feedback_timer = 180
-            self.feedback_color = (220, 180, 180) # Red
+            self.feedback_color = (220, 180, 180)
 
     def _handle_click(self, pos):
         if self.turn != self.player_color or self.ai_is_thinking: return
