@@ -32,22 +32,20 @@ class CheckersGame:
         self.move_history = []
         self.large_font = pygame.font.SysFont(None, 24)
         self.font = pygame.font.SysFont(None, 20)
+        self.dev_font = pygame.font.SysFont(None, 18)
         
         self.ai_depth = DEFAULT_AI_DEPTH
 
-        # --- FIX: Final button and UI element layout ---
         button_width = 180
         panel_x = BOARD_SIZE + 10
         button_y_start = self.screen.get_height() - 40
         self.buttons = [
-            # Buttons stacked from the bottom up
             Button("Dev Mode", (panel_x, button_y_start), (button_width, 30), self.toggle_dev_mode),
             Button("Board Numbers", (panel_x, button_y_start - 40), (button_width, 30), self.toggle_board_numbers),
             Button("Export to PDN", (panel_x, button_y_start - 80), (button_width, 30), self.export_to_pdn),
             Button("Force AI Move", (panel_x, button_y_start - 120), (button_width, 30), self.force_ai_move),
             Button("Reset", (panel_x, button_y_start - 160), (button_width, 30), self.reset_game),
             Button("Undo", (panel_x, button_y_start - 200), (button_width, 30), self.undo_move),
-            # AI Depth buttons are separate and positioned relative to the Undo button
             Button("-", (panel_x + 100, button_y_start - 235), (30, 30), self.decrease_ai_depth),
             Button("+", (panel_x + 140, button_y_start - 235), (30, 30), self.increase_ai_depth)
         ]
@@ -167,7 +165,6 @@ class CheckersGame:
         turn_surface = self.large_font.render(turn_text_str, True, (255, 255, 255))
         self.screen.blit(turn_surface, (panel_x + 10, 15))
 
-        # --- FIX: Position "AI thinking" and feedback messages ---
         y_pos_after_turn = 50
         if self.feedback_timer > 0 and self.feedback_message:
             feedback_surface = self.font.render(self.feedback_message, True, self.feedback_color)
@@ -176,13 +173,11 @@ class CheckersGame:
             thinking_text = self.large_font.render("AI is thinking...", True, (255, 255, 0))
             self.screen.blit(thinking_text, (panel_x + 10, y_pos_after_turn))
         
-        # --- FIX: Move History now drawn in the correct location ---
         history_y_start = 80
         history_title = self.large_font.render("Move History:", True, (200, 200, 200))
         self.screen.blit(history_title, (panel_x + 10, history_y_start))
         y_offset = history_y_start + 30
         
-        # This is the y-coordinate of the topmost button in the bottom stack
         button_boundary = self.buttons[-3].rect.top 
 
         for i in range(0, len(self.move_history), 2):
@@ -193,14 +188,12 @@ class CheckersGame:
             move_surface = self.font.render(line, True, (220, 220, 220))
             self.screen.blit(move_surface, (panel_x + 15, y_offset))
             y_offset += 20
-            # Stop drawing if we run out of space before the buttons
             if y_offset > button_boundary - 20: break
             
-        # --- FIX: Display AI Depth above the Undo button ---
-        ai_depth_y = self.buttons[-1].rect.top - 30
-        depth_text = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
-        self.screen.blit(depth_text, (panel_x + 10, ai_depth_y))
-
+        depth_button = self.buttons[-2]
+        depth_text_surface = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
+        text_y = depth_button.rect.centery - (depth_text_surface.get_height() // 2)
+        self.screen.blit(depth_text_surface, (panel_x + 10, text_y))
 
     def draw_dev_panel(self):
         panel_height = self.screen.get_height() - BOARD_SIZE
@@ -212,11 +205,12 @@ class CheckersGame:
 
         if not self.ai_top_moves: return
 
-        y_offset = panel_y + 10
+        y_offset = panel_y + 5
         title_text = self.large_font.render("AI Analysis:", True, (200, 200, 200))
         self.screen.blit(title_text, (10, y_offset))
-        y_offset += 30
+        y_offset += 25
 
+        line_height = 18
         for i, (score, sequence) in enumerate(self.ai_top_moves):
             if not sequence: continue
             move_text = f"{i+1}. "
@@ -225,10 +219,10 @@ class CheckersGame:
                 move_text += f"({segment_str}) "
             score_text = f"Score: {score:.2f}"
             full_text = f"{move_text} {score_text}"
-            text_surface = self.font.render(full_text, True, (220, 220, 220))
+            text_surface = self.dev_font.render(full_text, True, (220, 220, 220))
             self.screen.blit(text_surface, (15, y_offset))
-            y_offset += 20
-            if y_offset > self.screen.get_height() - 20: break
+            y_offset += line_height
+            if y_offset > self.screen.get_height() - (line_height / 2): break
 
             if i == 0:
                 max_alpha, current_alpha = 100, 100
@@ -300,13 +294,21 @@ class CheckersGame:
             self.feedback_color = (220, 180, 180)
 
     def _handle_click(self, pos):
+        # --- FIX: Boundary check to prevent crash on side-panel clicks ---
+        if pos[0] >= BOARD_SIZE or pos[1] >= BOARD_SIZE:
+            return
+
         if self.turn != self.player_color or self.ai_is_thinking: return
+        
         col = pos[0] // SQUARE_SIZE
         row = pos[1] // SQUARE_SIZE
+
         if self.board_flipped:
             row, col = ROWS - 1 - row, COLS - 1 - col
+        
         if self.selected_piece:
             if self._attempt_move((row, col)): return
+        
         self._select_piece(row, col)
 
     def _select_piece(self, row, col):
