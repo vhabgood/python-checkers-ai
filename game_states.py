@@ -47,55 +47,77 @@ class BaseState:
     def draw(self):
         raise NotImplementedError
 
-class LoadingScreen(BaseState):
-    """
-    A state to display a loading message while game assets are loaded in a
-    separate thread. It listens for messages on a queue to update its status.
-    """
+class LoadingScreen:
+    """A screen that shows the progress of resource loading."""
     def __init__(self, screen, status_queue):
-        super().__init__(screen)
+        self.screen = screen
         self.status_queue = status_queue
-        self.status_message = "Initializing..."
-        self.next_state = "game" # This is where we'll go when loading is done
+        self.done = False
+        self.next_state = None
+        self.font = pygame.font.SysFont(None, 36)
+        self.small_font = pygame.font.SysFont(None, 28)
+        self.checkmark_img = pygame.image.load("resources/checkmark.png").convert_alpha() # Make sure you have a checkmark image
+        self.checkmark_img = pygame.transform.scale(self.checkmark_img, (20, 20))
+        
+        # --- NEW: State for tracking loaded files ---
+        self.loading_messages = []
+        self.loaded_files = set()
+        self.error_message = ""
 
     def reset(self):
-        """Resets the loading screen to its initial state for a new loading sequence."""
         self.done = False
-        self.status_message = "Loading Databases..."
-        # Clear any old messages from the queue
-        while not self.status_queue.empty():
-            try:
-                self.status_queue.get_nowait()
-            except queue.Empty:
-                break
-
-    def handle_events(self, events, app=None):
-        # The loading screen doesn't need to handle any events
-        pass
+        self.next_state = None
+        self.loading_messages = []
+        self.loaded_files = set()
+        self.error_message = ""
 
     def update(self):
-        """Checks the queue for new status messages from the loading thread."""
         try:
-            # Check for a new message without blocking
-            message = self.status_queue.get_nowait()
-            if message == "DONE":
-                self.done = True # Signal to the StateManager that we are done
-            else:
-                self.status_message = message
+            # Process all messages in the queue
+            while not self.status_queue.empty():
+                msg = self.status_queue.get_nowait()
+                if "DONE" in msg:
+                    self.done = True
+                    self.next_state = "game"
+                elif "ERROR" in msg:
+                    self.error_message = msg.replace("ERROR:", "").strip()
+                elif "Loading" in msg:
+                    filename = msg.split(" ")[-1]
+                    if filename not in [m[0] for m in self.loading_messages]:
+                        self.loading_messages.append([filename, False]) # [filename, is_loaded]
+                elif "Loaded" in msg:
+                    filename = msg.split(" ")[-1]
+                    self.loaded_files.add(filename)
+                    for item in self.loading_messages:
+                        if item[0] == filename:
+                            item[1] = True
         except queue.Empty:
-            pass # It's normal for the queue to be empty most of the time
+            pass
 
     def draw(self):
-        """Draws the loading text and the current status message."""
-        self.screen.fill(COLOR_BG)
-        title_surf = self.font.render("Checkers AI", True, COLOR_TEXT)
-        title_rect = title_surf.get_rect(center=(WIDTH / 2, HEIGHT / 2 - 50))
+        self.screen.fill((20, 20, 20))
+        if self.error_message:
+            text = self.font.render("Error Loading Game!", True, (255, 100, 100))
+            self.screen.blit(text, (self.screen.get_width() // 2 - text.get_width() // 2, 100))
+            error_text = self.small_font.render(self.error_message, True, (220, 220, 220))
+            self.screen.blit(error_text, (self.screen.get_width() // 2 - error_text.get_width() // 2, 150))
+            return
+
+        text = self.font.render("Loading Game...", True, (255, 255, 255))
+        self.screen.blit(text, (self.screen.get_width() // 2 - text.get_width() // 2, 100))
         
-        status_surf = self.small_font.render(self.status_message, True, COLOR_TEXT)
-        status_rect = status_surf.get_rect(center=(WIDTH / 2, HEIGHT / 2 + 20))
-        
-        self.screen.blit(title_surf, title_rect)
-        self.screen.blit(status_surf, status_rect)
+        y_offset = 150
+        for filename, is_loaded in self.loading_messages:
+            msg_text = self.small_font.render(f"Loading {filename}...", True, (200, 200, 200))
+            self.screen.blit(msg_text, (100, y_offset))
+            if is_loaded:
+                # --- FIX: Moved checkmark further right ---
+                self.screen.blit(self.checkmark_img, (450, y_offset + 2))
+            y_offset += 30
+
+    def handle_events(self, events, app_instance):
+        # No events to handle on this screen
+        pass
 
 class PlayerSelectionScreen(BaseState):
     def __init__(self, screen):

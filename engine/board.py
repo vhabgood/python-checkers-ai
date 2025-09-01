@@ -3,6 +3,8 @@ import pygame
 import logging
 import random
 import copy
+import os
+import pickle
 from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE, COORD_TO_ACF
 from .piece import Piece
 
@@ -13,7 +15,10 @@ class Board:
     Manages the board state, including piece positions, move generation,
     and applying moves. This class is the ultimate authority on the rules of the game.
     """
-    def __init__(self):
+    # --- THIS IS THE FIX ---
+    # The __init__ method is now updated to accept keyword arguments (kwargs)
+    # for the endgame and opening book databases.
+    def __init__(self, **kwargs):
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
@@ -21,9 +26,56 @@ class Board:
         self.create_board()
         self.zobrist_table = self._init_zobrist()
         self.hash = self._compute_hash()
-        # --- NEW: History tracking for the undo feature ---
         self.history = [copy.deepcopy(self.board)]
+
+        # Store databases passed in as keyword arguments
+        self.EGTB_2v1_KINGS = kwargs.get("EGTB_2v1_KINGS", {})
+        self.EGTB_2v1_MEN = kwargs.get("EGTB_2v1_MEN", {})
+        self.EGTB_3v1_KINGS = kwargs.get("EGTB_3v1_KINGS", {})
+        self.EGTB_3v2_KINGS = kwargs.get("EGTB_3v2_KINGS", {})
+        self.EGTB_3v1K1M = kwargs.get("EGTB_3v1K1M", {})
+        self.EGTB_2K1Mv2K = kwargs.get("EGTB_2K1Mv2K", {})
+        self.EGTB_4v2_KINGS = kwargs.get("EGTB_4v2_KINGS", {})
+        self.EGTB_2K1Mv3K = kwargs.get("EGTB_2K1Mv3K", {})
+        self.EGTB_3v3_KINGS = kwargs.get("EGTB_3v3_KINGS", {})
+        self.EGTB_2K1Mv2K1M = kwargs.get("EGTB_2K1Mv2K1M", {})
+        self.EGTB_4v3_KINGS = kwargs.get("EGTB_4v3_KINGS", {})
+        self.OPENING_BOOK = kwargs.get("OPENING_BOOK", {})
         
+    @staticmethod
+    def load_databases(status_queue):
+        """Loads all endgame database files."""
+        db_path = "resources/"
+        databases = {}
+        
+        db_files = {
+            "db_2v1_kings.pkl": "EGTB_2v1_KINGS",
+            "db_2v1_men.pkl": "EGTB_2v1_MEN",
+            "db_3v1_kings.pkl": "EGTB_3v1_KINGS",
+            "db_3v2_kings.pkl": "EGTB_3v2_KINGS",
+            "db_3v1k1m.pkl": "EGTB_3v1K1M",
+            "db_2k1m_vs_2k.pkl": "EGTB_2K1Mv2K",
+            "db_4v2_kings.pkl": "EGTB_4v2_KINGS",
+            "db_2k1m_vs_3k.pkl": "EGTB_2K1Mv3K",
+            "db_3v3_kings.pkl": "EGTB_3v3_KINGS",
+            "db_2k1m_vs_2k1m.pkl": "EGTB_2K1Mv2K1M",
+            "db_4v3_kings.pkl": "EGTB_4v3_KINGS",
+            "custom_book.pkl": "OPENING_BOOK"
+        }
+
+        for filename, attr_name in db_files.items():
+            filepath = os.path.join(db_path, filename)
+            status_queue.put(f"Loading {filename}")
+            if os.path.exists(filepath):
+                with open(filepath, "rb") as f:
+                    databases[attr_name] = pickle.load(f)
+                status_queue.put(f"Loaded {filename}")
+            else:
+                logger.warning(f"Database file not found: {filepath}")
+                databases[attr_name] = {}
+
+        return databases
+
     def _init_zobrist(self):
         """Initializes the Zobrist table with random numbers."""
         table = {}
@@ -74,7 +126,8 @@ class Board:
 
     def move(self, piece, row, col):
         """
-        Moves a piece and now saves the new board state to the history.
+        Moves a piece on the board and updates its state. This modifies the
+        current board object.
         """
         old_key = (piece.row, piece.col, piece.color, piece.king)
         self.hash ^= self.zobrist_table[old_key]
@@ -92,8 +145,7 @@ class Board:
         
         new_key = (row, col, piece.color, piece.king)
         self.hash ^= self.zobrist_table[new_key]
-
-        # --- NEW: Add the new state to the history ---
+        
         self.history.append(copy.deepcopy(self.board))
 
     def _remove(self, pieces):
@@ -128,20 +180,14 @@ class Board:
         return None
 
     def draw(self, win, font, show_nums, flipped, valid_moves):
-        """Draws the entire board, pieces, and now highlights for valid moves."""
+        """Draws the entire board and all pieces."""
         self.draw_squares(win)
 
-        # --- FIX: Draw highlights for valid moves ---
         if valid_moves:
             for move in valid_moves:
                 row, col = move
-                
-                # Create a transparent surface for the highlight
                 highlight_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
-                # Fill with a semi-transparent color
-                highlight_surface.fill((60, 120, 200, 100)) # Blue with 100/255 alpha
-                
-                # Blit the highlight onto the correct square
+                highlight_surface.fill((60, 120, 200, 100))
                 win.blit(highlight_surface, (col * SQUARE_SIZE, row * SQUARE_SIZE))
 
         for row in range(ROWS):
@@ -166,12 +212,11 @@ class Board:
     def get_all_valid_moves(self, color):
         """
         The single authoritative function to get all valid moves for a color,
-        correctly enforcing the mandatory jump rule. Now with added logging.
+        correctly enforcing the mandatory jump rule.
         """
         moves = {}
         has_jumps = False
         
-        logger.debug(f"GET_MOVES: Finding all possible jumps for {'White' if color == WHITE else 'Red'}.")
         for piece in self.get_all_pieces(color):
             jumps = self._get_moves_for_piece(piece, find_jumps=True)
             if jumps:
@@ -179,30 +224,22 @@ class Board:
                 moves[(piece.row, piece.col)] = jumps
         
         if has_jumps:
-            logger.debug(f"GET_MOVES: Jumps found. Returning only jump moves: {moves}")
             return moves
 
-        logger.debug(f"GET_MOVES: No jumps found. Finding all slide moves for {'White' if color == WHITE else 'Red'}.")
         for piece in self.get_all_pieces(color):
             slides = self._get_moves_for_piece(piece, find_jumps=False)
             if slides:
                 moves[(piece.row, piece.col)] = slides
         
-        logger.debug(f"GET_MOVES: Slide moves found: {moves}")
         return moves
 
     def _get_moves_for_piece(self, piece, find_jumps):
         """
         Helper function to find all moves (jumps or slides) for a single piece.
-        Now with added logging.
         """
         moves = {}
         step = 2 if find_jumps else 1
         
-        move_type = "jumps" if find_jumps else "slides"
-        piece_pos = COORD_TO_ACF.get((piece.row, piece.col), '?')
-        logger.debug(f"GET_PIECE_MOVES: Finding {move_type} for piece at {piece_pos} ({piece.row}, {piece.col})")
-
         directions = []
         if piece.color == RED or piece.king:
             directions.extend([(1, -1), (1, 1)])
@@ -220,76 +257,16 @@ class Board:
             if find_jumps:
                 mid_row, mid_col = piece.row + dr, piece.col + dc
                 mid_square = self.get_piece(mid_row, mid_col)
-                if dest_square == 0 and mid_square != 0 and mid_square.color != piece.color:
+                if dest_square == 0 and isinstance(mid_square, Piece) and mid_square.color != piece.color:
                     moves[(end_row, end_col)] = [mid_square]
             else:
                 if dest_square == 0:
                     moves[(end_row, end_col)] = []
         
-        if moves:
-            logger.debug(f"GET_PIECE_MOVES: Found {len(moves)} {move_type} for piece at {piece_pos}: {moves.keys()}")
         return moves
-
-    def apply_move(self, path):
-        """
-        Applies a full move sequence to a DEEP COPY of the board, flips the turn,
-        and returns the new board state. This is used exclusively by the AI's search.
-        """
-        temp_board = copy.deepcopy(self)
-        start_pos = path[0]
-        piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
-
-        if piece_to_move == 0:
-            return temp_board # Return unchanged board if path is invalid
-
-        captured_pieces = []
-        for i in range(len(path) - 1):
-            p_start, p_end = path[i], path[i+1]
-            if abs(p_start[0] - p_end[0]) == 2: # Is a jump
-                mid_row = (p_start[0] + p_end[0]) // 2
-                mid_col = (p_start[1] + p_end[1]) // 2
-                captured = temp_board.get_piece(mid_row, mid_col)
-                if captured: captured_pieces.append(captured)
-        
-        if captured_pieces:
-            temp_board._remove(captured_pieces)
-
-        final_pos = path[-1]
-        temp_board.move(piece_to_move, final_pos[0], final_pos[1])
-        
-        # CRITICAL: Always flip the turn for the simulated response.
-        temp_board.turn = WHITE if temp_board.turn == RED else RED
-        temp_board.hash ^= temp_board.zobrist_table['turn']
-
-        return temp_board
-
-    # Add this new method inside the Board class in engine/board.py
-
-    def _simulate_path(self, path):
-        """
-        Simulates applying a path to a deep copy of the board WITHOUT changing the turn.
-        This is used for internal checks, like finding multi-jumps.
-        """
-        temp_board = copy.deepcopy(self)
-        for i in range(len(path) - 1):
-            start_pos = path[i]
-            end_pos = path[i+1]
-            piece = temp_board.get_piece(start_pos[0], start_pos[1])
-            if piece == 0: continue
-
-            is_jump = abs(start_pos[0] - end_pos[0]) == 2
-            if is_jump:
-                captured_row = (start_pos[0] + end_pos[0]) // 2
-                captured_col = (start_pos[1] + end_pos[1]) // 2
-                captured_piece = temp_board.get_piece(captured_row, captured_col)
-                if captured_piece != 0:
-                    temp_board._remove([captured_piece])
-            
-            temp_board.move(piece, end_pos[0], end_pos[1])
-        return temp_board
         
     def recalculate_pieces(self):
-        """Recalculates piece counts after an undo."""
+        """Recalculates piece and king counts directly from the board state."""
         self.red_left = self.white_left = 0
         self.red_kings = self.white_kings = 0
         for r in range(ROWS):

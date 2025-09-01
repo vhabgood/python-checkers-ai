@@ -18,7 +18,16 @@ class CheckersGame:
     def __init__(self, screen, player_color_str, status_queue, args):
         self.screen = screen
         self.args = args
-        self.board = Board()
+        
+        # --- NEW: Load databases if not disabled by the --no-db flag ---
+        if not self.args.no_db:
+            databases = Board.load_databases(status_queue)
+        else:
+            databases = {}
+            status_queue.put("Skipping database loading.")
+
+        self.board = Board(**databases) # Pass loaded databases to the Board
+        
         self.player_color = WHITE if player_color_str == 'white' else RED
         self.ai_color = RED if self.player_color == WHITE else WHITE
         self.turn = self.board.turn
@@ -77,10 +86,15 @@ class CheckersGame:
         threading.Thread(target=self.run_ai_calculation, args=(color_to_move,)).start()
 
     def run_ai_calculation(self, color_to_move):
-        logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
-        board_copy = copy.deepcopy(self.board)
-        best_move, top_moves = get_ai_move_analysis(board_copy, self.ai_depth, color_to_move, evaluate_board)
-        self.ai_move_queue.put({'best': best_move, 'top': top_moves})
+        try:
+            logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
+            board_copy = copy.deepcopy(self.board)
+            best_move, top_moves = get_ai_move_analysis(board_copy, self.ai_depth, color_to_move, evaluate_board)
+            self.ai_move_queue.put({'best': best_move, 'top': top_moves})
+            logger.info("AI_THREAD: Calculation finished normally. Move placed in queue.")
+        except Exception as e:
+            logger.error(f"AI_THREAD: CRITICAL ERROR during calculation: {e}", exc_info=True)
+            self.ai_move_queue.put({'best': None, 'top': []})
 
     def _change_turn(self):
         self.valid_moves = {}

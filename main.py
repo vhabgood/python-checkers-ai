@@ -76,20 +76,17 @@ class App:
 
     def load_game(self, player_color_str):
         """
-        This method runs in a separate thread to load all game resources
-        without freezing the UI.
+        Loads all game resources in a separate thread to avoid freezing the UI.
+        This now passes the --no-db flag to the game instance.
         """
-        thread_id = threading.get_ident()
-        logger.info(f"DATABASE: Loading thread {thread_id} started.")
         try:
-            self.game = CheckersGame(self.screen, player_color_str, self.status_queue, self.args)
-            self.states["game"] = self.game
+            # --- FIX: Pass the status queue and args to the CheckersGame instance ---
+            self.states["game"] = CheckersGame(self.screen, player_color_str, self.status_queue, self.args)
+            self.next_state = "game"
             self.status_queue.put("DONE")
-            logger.info(f"DATABASE: Loading thread {thread_id} finished successfully.")
         except Exception as e:
-            logger.error(f"DATABASE: Loading thread {thread_id} failed: {e}", exc_info=True)
-            self.status_queue.put("Error loading game!")
-
+            logger.error(f"DATABASE: Loading thread failed: {e}", exc_info=True)
+            self.status_queue.put(f"ERROR: {e}")
 
     def transition_state(self):
         """Handles changing from one game state to another."""
