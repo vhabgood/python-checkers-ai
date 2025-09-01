@@ -218,6 +218,41 @@ class Board:
                 moves[(piece.row, piece.col)] = slides
         
         return moves
+        
+    def apply_move(self, path):
+        """
+        Applies a move sequence to a DEEP COPY of the board and returns the new board state.
+        This is used exclusively by the AI's search for simulating future turns.
+        """
+        temp_board = copy.deepcopy(self)
+        
+        start_pos = path[0]
+        piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
+
+        if piece_to_move == 0:
+            logger.error(f"APPLY_MOVE: Attempted to move from an empty square at {start_pos} for path {path}.")
+            return temp_board
+
+        captured_pieces = []
+        for i in range(len(path) - 1):
+            p_start, p_end = path[i], path[i+1]
+            if abs(p_start[0] - p_end[0]) == 2: # This is a jump
+                mid_row = (p_start[0] + p_end[0]) // 2
+                mid_col = (p_start[1] + p_end[1]) // 2
+                captured = temp_board.get_piece(mid_row, mid_col)
+                if captured:
+                    captured_pieces.append(captured)
+        
+        if captured_pieces:
+            temp_board._remove(captured_pieces)
+
+        final_pos = path[-1]
+        temp_board.move(piece_to_move, final_pos[0], final_pos[1])
+        
+        temp_board.turn = WHITE if temp_board.turn == RED else RED
+        temp_board.hash ^= temp_board.zobrist_table['turn']
+
+        return temp_board
 
     def _get_moves_for_piece(self, piece, find_jumps):
         """

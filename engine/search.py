@@ -1,7 +1,7 @@
 # engine/search.py
 import logging
 import copy
-from .constants import RED, WHITE
+from .constants import RED, WHITE, COORD_TO_ACF
 
 logger = logging.getLogger('board')
 
@@ -70,45 +70,47 @@ def _find_all_paths_from(original_board, current_path):
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The core recursive search algorithm.
+    MODIFIED MINIMAX: Now returns a list of move segments (a list of lists)
+    to avoid the phantom move bug.
     """
     if depth == 0 or board.winner() is not None:
         return evaluate_func(board), []
 
     color_to_move = board.turn
+    best_move_sequence = []
 
     if maximizing_player:
         max_eval = float('-inf')
-        best_path = []
         for path in get_all_move_sequences(board, color_to_move):
             move_board = board.apply_move(path)
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
+            evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             if evaluation > max_eval:
                 max_eval = evaluation
-                best_path = path + subsequent_path
+                # Create a new sequence: [current_move, next_move, next_next_move, ...]
+                best_move_sequence = [path] + subsequent_sequence
             alpha = max(alpha, evaluation)
-            if beta <= alpha:
-                break
-        return max_eval, best_path
-    else:
+            if beta <= alpha: break
+        return max_eval, best_move_sequence
+    else: # Minimizing player
         min_eval = float('inf')
-        best_path = []
         for path in get_all_move_sequences(board, color_to_move):
             move_board = board.apply_move(path)
-            evaluation, subsequent_path = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
+            evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             if evaluation < min_eval:
                 min_eval = evaluation
-                best_path = path + subsequent_path
+                best_move_sequence = [path] + subsequent_sequence
             beta = min(beta, evaluation)
-            if beta <= alpha:
-                break
-        return min_eval, best_path
+            if beta <= alpha: break
+        return min_eval, best_move_sequence
 
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     """
-    The top-level AI function.
+    MODIFIED AI ANALYSIS: Correctly processes the list of move segments and
+    filters for unique moves before analysis.
     """
     is_maximizing = color_to_move == WHITE
+    
+    # Filter for unique moves to prevent duplicate analysis
     possible_moves_raw = get_all_move_sequences(board, color_to_move)
     seen_moves = set()
     possible_moves = []
@@ -118,8 +120,7 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
             seen_moves.add(move_tuple)
             possible_moves.append(move)
 
-    if not possible_moves:
-        return [], []
+    if not possible_moves: return [], []
 
     all_scored_moves = []
     for move_path in possible_moves:
@@ -130,15 +131,14 @@ def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
         
         all_scored_moves.append((score, full_sequence_for_display, move_path))
 
-    if not all_scored_moves:
-        return [], []
+    if not all_scored_moves: return [], []
 
     all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
     
     best_path_for_execution = all_scored_moves[0][2]
+    
     top_5_for_display = []
     for score, sequence, _ in all_scored_moves[:5]:
-        flat_path = [coord for move_segment in sequence for coord in move_segment]
-        top_5_for_display.append((score, flat_path))
+        top_5_for_display.append((score, sequence))
     
     return best_path_for_execution, top_5_for_display
