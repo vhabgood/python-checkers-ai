@@ -48,49 +48,28 @@ class BaseState:
         raise NotImplementedError
 
 class LoadingScreen:
-    """A screen that shows the progress of resource loading."""
+    """A screen that shows a simple loading message."""
     def __init__(self, screen, status_queue):
         self.screen = screen
         self.status_queue = status_queue
         self.done = False
         self.next_state = None
         self.font = pygame.font.SysFont(None, 36)
-        self.small_font = pygame.font.SysFont(None, 28)
-        self.checkmark_img = pygame.image.load("resources/checkmark.png").convert_alpha() # Make sure you have a checkmark image
-        self.checkmark_img = pygame.transform.scale(self.checkmark_img, (20, 20))
-        
-        # --- NEW: State for tracking loaded files ---
-        self.loading_messages = []
-        self.loaded_files = set()
         self.error_message = ""
 
     def reset(self):
         self.done = False
         self.next_state = None
-        self.loading_messages = []
-        self.loaded_files = set()
         self.error_message = ""
 
     def update(self):
         try:
-            # Process all messages in the queue
-            while not self.status_queue.empty():
-                msg = self.status_queue.get_nowait()
-                if "DONE" in msg:
-                    self.done = True
-                    self.next_state = "game"
-                elif "ERROR" in msg:
-                    self.error_message = msg.replace("ERROR:", "").strip()
-                elif "Loading" in msg:
-                    filename = msg.split(" ")[-1]
-                    if filename not in [m[0] for m in self.loading_messages]:
-                        self.loading_messages.append([filename, False]) # [filename, is_loaded]
-                elif "Loaded" in msg:
-                    filename = msg.split(" ")[-1]
-                    self.loaded_files.add(filename)
-                    for item in self.loading_messages:
-                        if item[0] == filename:
-                            item[1] = True
+            msg = self.status_queue.get_nowait()
+            if "DONE" in msg:
+                self.done = True
+                self.next_state = "game"
+            elif "ERROR" in msg:
+                self.error_message = msg.replace("ERROR:", "").strip()
         except queue.Empty:
             pass
 
@@ -99,24 +78,11 @@ class LoadingScreen:
         if self.error_message:
             text = self.font.render("Error Loading Game!", True, (255, 100, 100))
             self.screen.blit(text, (self.screen.get_width() // 2 - text.get_width() // 2, 100))
-            error_text = self.small_font.render(self.error_message, True, (220, 220, 220))
-            self.screen.blit(error_text, (self.screen.get_width() // 2 - error_text.get_width() // 2, 150))
-            return
-
-        text = self.font.render("Loading Game...", True, (255, 255, 255))
-        self.screen.blit(text, (self.screen.get_width() // 2 - text.get_width() // 2, 100))
-        
-        y_offset = 150
-        for filename, is_loaded in self.loading_messages:
-            msg_text = self.small_font.render(f"Loading {filename}...", True, (200, 200, 200))
-            self.screen.blit(msg_text, (100, y_offset))
-            if is_loaded:
-                # --- FIX: Moved checkmark further right ---
-                self.screen.blit(self.checkmark_img, (450, y_offset + 2))
-            y_offset += 30
+        else:
+            text = self.font.render("Loading...", True, (255, 255, 255))
+            self.screen.blit(text, (self.screen.get_width() // 2 - text.get_width() // 2, 100))
 
     def handle_events(self, events, app_instance):
-        # No events to handle on this screen
         pass
 
 class PlayerSelectionScreen(BaseState):

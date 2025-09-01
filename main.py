@@ -44,7 +44,6 @@ logger.info("Logging configured. Application starting.")
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Checkers AI")
     parser.add_argument('--debug-board', action='store_true', help='Show board debug numbers.')
-    parser.add_argument('--no-db', action='store_true', help='Do not load the endgame databases.')
     return parser.parse_args()
 
 # --- 2. NOW IMPORT YOUR GAME MODULES ---
@@ -76,16 +75,14 @@ class App:
 
     def load_game(self, player_color_str):
         """
-        Loads all game resources in a separate thread to avoid freezing the UI.
-        This now passes the --no-db flag to the game instance.
+        Loads all game resources in a separate thread.
         """
         try:
-            # --- FIX: Pass the status queue and args to the CheckersGame instance ---
             self.states["game"] = CheckersGame(self.screen, player_color_str, self.status_queue, self.args)
             self.next_state = "game"
             self.status_queue.put("DONE")
         except Exception as e:
-            logger.error(f"DATABASE: Loading thread failed: {e}", exc_info=True)
+            logger.error(f"GAME_LOADING: Loading thread failed: {e}", exc_info=True)
             self.status_queue.put(f"ERROR: {e}")
 
     def transition_state(self):

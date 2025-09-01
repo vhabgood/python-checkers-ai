@@ -18,7 +18,7 @@ class Board:
     # --- THIS IS THE FIX ---
     # The __init__ method is now updated to accept keyword arguments (kwargs)
     # for the endgame and opening book databases.
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
@@ -27,20 +27,6 @@ class Board:
         self.zobrist_table = self._init_zobrist()
         self.hash = self._compute_hash()
         self.history = [copy.deepcopy(self.board)]
-
-        # Store databases passed in as keyword arguments
-        self.EGTB_2v1_KINGS = kwargs.get("EGTB_2v1_KINGS", {})
-        self.EGTB_2v1_MEN = kwargs.get("EGTB_2v1_MEN", {})
-        self.EGTB_3v1_KINGS = kwargs.get("EGTB_3v1_KINGS", {})
-        self.EGTB_3v2_KINGS = kwargs.get("EGTB_3v2_KINGS", {})
-        self.EGTB_3v1K1M = kwargs.get("EGTB_3v1K1M", {})
-        self.EGTB_2K1Mv2K = kwargs.get("EGTB_2K1Mv2K", {})
-        self.EGTB_4v2_KINGS = kwargs.get("EGTB_4v2_KINGS", {})
-        self.EGTB_2K1Mv3K = kwargs.get("EGTB_2K1Mv3K", {})
-        self.EGTB_3v3_KINGS = kwargs.get("EGTB_3v3_KINGS", {})
-        self.EGTB_2K1Mv2K1M = kwargs.get("EGTB_2K1Mv2K1M", {})
-        self.EGTB_4v3_KINGS = kwargs.get("EGTB_4v3_KINGS", {})
-        self.OPENING_BOOK = kwargs.get("OPENING_BOOK", {})
         
     @staticmethod
     def load_databases(status_queue):

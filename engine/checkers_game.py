@@ -18,16 +18,7 @@ class CheckersGame:
     def __init__(self, screen, player_color_str, status_queue, args):
         self.screen = screen
         self.args = args
-        
-        # --- NEW: Load databases if not disabled by the --no-db flag ---
-        if not self.args.no_db:
-            databases = Board.load_databases(status_queue)
-        else:
-            databases = {}
-            status_queue.put("Skipping database loading.")
-
-        self.board = Board(**databases) # Pass loaded databases to the Board
-        
+        self.board = Board()
         self.player_color = WHITE if player_color_str == 'white' else RED
         self.ai_color = RED if self.player_color == WHITE else WHITE
         self.turn = self.board.turn
