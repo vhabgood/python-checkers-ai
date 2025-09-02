@@ -7,9 +7,23 @@ logger = logging.getLogger('board')
 
 def evaluate_board(board):
     """
-    Calculates the static score of the board from White's perspective.
-    This is a stable base evaluation without database lookups.
+    Calculates the static score of the board. This version now checks the opening book database.
     """
+    # --- NEW: Check the Opening Book database ---
+    if board.db_conn and board.hash:
+        try:
+            cursor = board.db_conn.cursor()
+            # Query the database for the current board position's hash
+            cursor.execute("SELECT score FROM opening_book WHERE board_hash = ?", (board.hash,))
+            result = cursor.fetchone()
+            if result:
+                logger.info("EVALUATION: Found position in opening book database.")
+                # If found, return the pre-calculated score
+                return result[0] + random.uniform(-0.01, 0.01)
+        except Exception as e:
+            logger.error(f"DATABASE: Error querying opening_book: {e}")
+
+    # --- Standard Evaluation (if not in a database) ---
     white_men = board.white_left - board.white_kings
     red_men = board.red_left - board.red_kings
     material_score = (white_men - red_men) + (board.white_kings - board.red_kings) * 1.5

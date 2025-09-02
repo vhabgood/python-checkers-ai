@@ -5,6 +5,7 @@ import threading
 import queue
 import copy
 import time
+import sqlite3
 from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_AI_DEPTH
 import engine.constants as constants
@@ -18,7 +19,18 @@ class CheckersGame:
     def __init__(self, screen, player_color_str, status_queue, args):
         self.screen = screen
         self.args = args
-        self.board = Board()
+        
+        # --- NEW: Connect to the SQLite Database ---
+        try:
+            self.db_conn = sqlite3.connect("checkers_database.db")
+            logger.info("Successfully connected to checkers_database.db")
+        except Exception as e:
+            logger.error(f"DATABASE: Failed to connect to checkers_database.db: {e}")
+            self.db_conn = None
+
+        # Pass the database connection to the Board
+        self.board = Board(db_conn=self.db_conn)
+        
         self.player_color = WHITE if player_color_str == 'white' else RED
         self.ai_color = RED if self.player_color == WHITE else WHITE
         self.turn = self.board.turn

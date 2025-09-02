@@ -9,4 +9,8 @@ __pycache__/
 # Large binary files we can regenerate
 *.dat
 *.pkl
+*.db
 logs/
+
+# Database Files
+checkers_database.db
