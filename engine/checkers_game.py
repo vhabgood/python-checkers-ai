@@ -6,6 +6,7 @@ import queue
 import copy
 import time
 import sqlite3
+import os
 from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_AI_DEPTH
 import engine.constants as constants
@@ -20,7 +21,6 @@ class CheckersGame:
         self.screen = screen
         self.args = args
         
-        # --- NEW: Connect to the SQLite Database ---
         try:
             self.db_conn = sqlite3.connect("checkers_database.db")
             logger.info("Successfully connected to checkers_database.db")
@@ -28,7 +28,6 @@ class CheckersGame:
             logger.error(f"DATABASE: Failed to connect to checkers_database.db: {e}")
             self.db_conn = None
 
-        # Pass the database connection to the Board
         self.board = Board(db_conn=self.db_conn)
         
         self.player_color = WHITE if player_color_str == 'white' else RED
@@ -252,6 +251,19 @@ class CheckersGame:
                     self.screen.blit(highlight_surface, (dest_square_coord[1] * SQUARE_SIZE, dest_square_coord[0] * SQUARE_SIZE))
                     current_alpha = max(0, current_alpha - alpha_step * 4)
 
+    # --- THIS IS THE FIX: Add the missing button callback methods ---
+    def toggle_dev_mode(self):
+        self.dev_mode = not self.dev_mode
+        logger.info(f"Developer mode toggled {'ON' if self.dev_mode else 'OFF'}.")
+
+    def toggle_board_numbers(self):
+        self.show_board_numbers = not self.show_board_numbers
+        logger.info(f"Board numbers toggled {'ON' if self.show_board_numbers else 'OFF'}.")
+
+    def toggle_board_flip(self):
+        self.board_flipped = not self.board_flipped
+        logger.info(f"Board flip toggled {'ON' if self.board_flipped else 'OFF'}.")
+
     def increase_ai_depth(self):
         self.ai_depth = min(9, self.ai_depth + 1)
         logger.info(f"AI depth increased to {self.ai_depth}")
@@ -260,17 +272,13 @@ class CheckersGame:
         self.ai_depth = max(5, self.ai_depth - 1)
         logger.info(f"AI depth decreased to {self.ai_depth}")
 
-    def toggle_dev_mode(self): self.dev_mode = not self.dev_mode
-    def toggle_board_numbers(self): self.show_board_numbers = not self.show_board_numbers
-    def toggle_board_flip(self): self.board_flipped = not self.board_flipped
-    
     def force_ai_move(self):
         if not self.ai_is_thinking:
             self.force_ai_flag = True
             self.start_ai_turn(self.turn)
 
     def reset_game(self):
-        self.board = Board()
+        self.board = Board(db_conn=self.db_conn)
         self.turn = self.board.turn
         self.move_history = []
         self.ai_top_moves = []
@@ -311,7 +319,6 @@ class CheckersGame:
             self.feedback_color = (220, 180, 180)
 
     def _handle_click(self, pos):
-        # --- FIX: Boundary check to prevent crash on side-panel clicks ---
         if pos[0] >= BOARD_SIZE or pos[1] >= BOARD_SIZE:
             return
 

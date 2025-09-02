@@ -16,9 +16,8 @@ class Board:
     and applying moves. This class is the ultimate authority on the rules of the game.
     """
     # --- THIS IS THE FIX ---
-    # The __init__ method is now updated to accept keyword arguments (kwargs)
-    # for the endgame and opening book databases.
-    def __init__(self):
+    # The __init__ method is now updated to accept the db_conn keyword argument.
+    def __init__(self, db_conn=None):
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
@@ -28,40 +27,55 @@ class Board:
         self.hash = self._compute_hash()
         self.history = [copy.deepcopy(self.board)]
         
-    @staticmethod
-    def load_databases(status_queue):
-        """Loads all endgame database files."""
-        db_path = "resources/"
-        databases = {}
+        # Store the database connection
+        self.db_conn = db_conn
+
+    def apply_move(self, path):
+        """
+        Applies a move sequence to a DEEP COPY of the board and returns the new board state.
+        This version safely handles the database connection during the copy process.
+        """
+        # --- THIS IS THE FIX ---
+        # Temporarily remove the database connection before copying.
+        db_connection = self.db_conn
+        self.db_conn = None
         
-        db_files = {
-            "db_2v1_kings.pkl": "EGTB_2v1_KINGS",
-            "db_2v1_men.pkl": "EGTB_2v1_MEN",
-            "db_3v1_kings.pkl": "EGTB_3v1_KINGS",
-            "db_3v2_kings.pkl": "EGTB_3v2_KINGS",
-            "db_3v1k1m.pkl": "EGTB_3v1K1M",
-            "db_2k1m_vs_2k.pkl": "EGTB_2K1Mv2K",
-            "db_4v2_kings.pkl": "EGTB_4v2_KINGS",
-            "db_2k1m_vs_3k.pkl": "EGTB_2K1Mv3K",
-            "db_3v3_kings.pkl": "EGTB_3v3_KINGS",
-            "db_2k1m_vs_2k1m.pkl": "EGTB_2K1Mv2K1M",
-            "db_4v3_kings.pkl": "EGTB_4v3_KINGS",
-            "custom_book.pkl": "OPENING_BOOK"
-        }
+        # Now, the deepcopy will succeed because it doesn't have to copy the connection.
+        temp_board = copy.deepcopy(self)
+        
+        # Restore the connection on both the original and the new copy.
+        self.db_conn = db_connection
+        temp_board.db_conn = db_connection
+        
+        # The rest of the function proceeds as normal...
+        start_pos = path[0]
+        piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
 
-        for filename, attr_name in db_files.items():
-            filepath = os.path.join(db_path, filename)
-            status_queue.put(f"Loading {filename}")
-            if os.path.exists(filepath):
-                with open(filepath, "rb") as f:
-                    databases[attr_name] = pickle.load(f)
-                status_queue.put(f"Loaded {filename}")
-            else:
-                logger.warning(f"Database file not found: {filepath}")
-                databases[attr_name] = {}
+        if piece_to_move == 0:
+            logger.error(f"APPLY_MOVE: Attempted to move from an empty square at {start_pos} for path {path}.")
+            return temp_board
 
-        return databases
+        captured_pieces = []
+        for i in range(len(path) - 1):
+            p_start, p_end = path[i], path[i+1]
+            if abs(p_start[0] - p_end[0]) == 2:
+                mid_row = (p_start[0] + p_end[0]) // 2
+                mid_col = (p_start[1] + p_end[1]) // 2
+                captured = temp_board.get_piece(mid_row, mid_col)
+                if captured:
+                    captured_pieces.append(captured)
+        
+        if captured_pieces:
+            temp_board._remove(captured_pieces)
 
+        final_pos = path[-1]
+        temp_board.move(piece_to_move, final_pos[0], final_pos[1])
+        
+        temp_board.turn = WHITE if temp_board.turn == RED else RED
+        temp_board.hash ^= temp_board.zobrist_table['turn']
+
+        return temp_board
+        
     def _init_zobrist(self):
         """Initializes the Zobrist table with random numbers."""
         table = {}
@@ -218,41 +232,6 @@ class Board:
                 moves[(piece.row, piece.col)] = slides
         
         return moves
-        
-    def apply_move(self, path):
-        """
-        Applies a move sequence to a DEEP COPY of the board and returns the new board state.
-        This is used exclusively by the AI's search for simulating future turns.
-        """
-        temp_board = copy.deepcopy(self)
-        
-        start_pos = path[0]
-        piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
-
-        if piece_to_move == 0:
-            logger.error(f"APPLY_MOVE: Attempted to move from an empty square at {start_pos} for path {path}.")
-            return temp_board
-
-        captured_pieces = []
-        for i in range(len(path) - 1):
-            p_start, p_end = path[i], path[i+1]
-            if abs(p_start[0] - p_end[0]) == 2: # This is a jump
-                mid_row = (p_start[0] + p_end[0]) // 2
-                mid_col = (p_start[1] + p_end[1]) // 2
-                captured = temp_board.get_piece(mid_row, mid_col)
-                if captured:
-                    captured_pieces.append(captured)
-        
-        if captured_pieces:
-            temp_board._remove(captured_pieces)
-
-        final_pos = path[-1]
-        temp_board.move(piece_to_move, final_pos[0], final_pos[1])
-        
-        temp_board.turn = WHITE if temp_board.turn == RED else RED
-        temp_board.hash ^= temp_board.zobrist_table['turn']
-
-        return temp_board
 
     def _get_moves_for_piece(self, piece, find_jumps):
         """
