@@ -5,42 +5,34 @@ import random
 import copy
 import os
 import pickle
-from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE, COORD_TO_ACF
+from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE, COORD_TO_ACF 
 from .piece import Piece
 
 logger = logging.getLogger('board')
 
 class Board:
-    """
-    Manages the board state, including piece positions, move generation,
-    and applying moves. This class is the ultimate authority on the rules of the game.
-    """
-    # --- THIS IS THE FIX ---
-    # The __init__ method is now updated to accept the db_conn keyword argument.
     def __init__(self, db_conn=None):
         self.board = []
         self.red_left = self.white_left = 12
         self.red_kings = self.white_kings = 0
         self.turn = RED
+        self.db_conn = db_conn
         self.create_board()
         self.zobrist_table = self._init_zobrist()
         self.hash = self._compute_hash()
         self.history = [copy.deepcopy(self.board)]
-        
-        # Store the database connection
-        self.db_conn = db_conn
 
     def apply_move(self, path):
         """
-        Applies a move sequence to a DEEP COPY of the board and returns the new board state.
-        This version safely handles the database connection during the copy process.
+        Applies a move sequence to a DEEP COPY of the board. This version
+        safely handles the database connection during the copy process.
         """
         # --- THIS IS THE FIX ---
         # Temporarily remove the database connection before copying.
         db_connection = self.db_conn
         self.db_conn = None
         
-        # Now, the deepcopy will succeed because it doesn't have to copy the connection.
+        # Now, the deepcopy will succeed.
         temp_board = copy.deepcopy(self)
         
         # Restore the connection on both the original and the new copy.
@@ -75,9 +67,8 @@ class Board:
         temp_board.hash ^= temp_board.zobrist_table['turn']
 
         return temp_board
-        
+
     def _init_zobrist(self):
-        """Initializes the Zobrist table with random numbers."""
         table = {}
         for r in range(ROWS):
             for c in range(COLS):
@@ -89,7 +80,6 @@ class Board:
         return table
 
     def _compute_hash(self):
-        """Calculates the initial Zobrist hash for the board."""
         h = 0
         for r in range(ROWS):
             for c in range(COLS):
@@ -102,7 +92,6 @@ class Board:
         return h
 
     def create_board(self):
-        """Initializes the board with pieces in their starting positions."""
         self.board = []
         for row in range(ROWS):
             self.board.append([])
@@ -118,17 +107,12 @@ class Board:
                     self.board[row].append(0)
 
     def draw_squares(self, win):
-        """Draws the checkerboard pattern."""
         win.fill(BLACK)
         for row in range(ROWS):
             for col in range(row % 2, COLS, 2):
                 pygame.draw.rect(win, (60,60,60), (row * SQUARE_SIZE, col * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
     def move(self, piece, row, col):
-        """
-        Moves a piece on the board and updates its state. This modifies the
-        current board object.
-        """
         old_key = (piece.row, piece.col, piece.color, piece.king)
         self.hash ^= self.zobrist_table[old_key]
         
@@ -149,7 +133,6 @@ class Board:
         self.history.append(copy.deepcopy(self.board))
 
     def _remove(self, pieces):
-        """Removes pieces from the board (after a capture)."""
         for piece in pieces:
             if piece is not None and piece != 0:
                 key = (piece.row, piece.col, piece.color, piece.king)
@@ -159,11 +142,9 @@ class Board:
                 else: self.white_left -= 1
     
     def get_piece(self, row, col):
-        """Returns the piece object at a given location."""
         return self.board[row][col]
 
     def get_all_pieces(self, color):
-        """Returns a list of all pieces of a given color."""
         pieces = []
         for row in self.board:
             for piece in row:
@@ -172,7 +153,6 @@ class Board:
         return pieces
 
     def winner(self):
-        """Determines if there is a winner."""
         if self.red_left <= 0: return WHITE
         if self.white_left <= 0: return RED
         if not self.get_all_valid_moves(self.turn):
@@ -180,7 +160,6 @@ class Board:
         return None
 
     def draw(self, win, font, show_nums, flipped, valid_moves):
-        """Draws the entire board and all pieces."""
         self.draw_squares(win)
 
         if valid_moves:
@@ -200,7 +179,6 @@ class Board:
             self._draw_board_numbers(win, font, flipped)
 
     def _draw_board_numbers(self, win, font, flipped):
-        """Draws the algebraic notation numbers on the board."""
         for r in range(ROWS):
             for c in range(COLS):
                 if c % 2 == ((r + 1) % 2):
@@ -210,10 +188,6 @@ class Board:
                     win.blit(text, (draw_c * SQUARE_SIZE + 5, draw_r * SQUARE_SIZE + 5))
 
     def get_all_valid_moves(self, color):
-        """
-        The single authoritative function to get all valid moves for a color,
-        correctly enforcing the mandatory jump rule.
-        """
         moves = {}
         has_jumps = False
         
@@ -234,9 +208,6 @@ class Board:
         return moves
 
     def _get_moves_for_piece(self, piece, find_jumps):
-        """
-        Helper function to find all moves (jumps or slides) for a single piece.
-        """
         moves = {}
         step = 2 if find_jumps else 1
         
@@ -266,7 +237,6 @@ class Board:
         return moves
         
     def recalculate_pieces(self):
-        """Recalculates piece and king counts directly from the board state."""
         self.red_left = self.white_left = 0
         self.red_kings = self.white_kings = 0
         for r in range(ROWS):

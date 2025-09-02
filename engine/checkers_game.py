@@ -90,7 +90,16 @@ class CheckersGame:
     def run_ai_calculation(self, color_to_move):
         try:
             logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
+            
+            # --- THIS IS THE FIX ---
+            # Temporarily remove the database connection before copying the board.
+            db_connection = self.board.db_conn
+            self.board.db_conn = None
             board_copy = copy.deepcopy(self.board)
+            # Restore the connection to the original board and add it to the new copy.
+            self.board.db_conn = db_connection
+            board_copy.db_conn = db_connection
+            
             best_move, top_moves = get_ai_move_analysis(board_copy, self.ai_depth, color_to_move, evaluate_board)
             self.ai_move_queue.put({'best': best_move, 'top': top_moves})
             logger.info("AI_THREAD: Calculation finished normally. Move placed in queue.")
