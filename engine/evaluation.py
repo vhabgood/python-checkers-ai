@@ -6,10 +6,34 @@ from .constants import RED, WHITE, ROWS, COLS
 logger = logging.getLogger('board')
 
 def evaluate_board(board):
+       """
+    Calculates the static score of the board. Now checks opening book AND endgame databases
+    and includes detailed logging for database queries.
     """
-    Calculates the static score of the board from White's perspective.
-    This is a stable base evaluation without database lookups.
-    """
+    # --- 1. Check Endgame Tables ---
+    if board.db_conn:
+        try:
+            table_name, key = board._get_endgame_key()
+            if table_name and key:
+                # --- DEBUG LOG 1: What is being sent to the database ---
+                logger.info(f"DATABASE_QUERY: Sending query to table '{table_name}' with key: {key}")
+                
+                cursor = board.db_conn.cursor()
+                cursor.execute("SELECT result FROM endgame_tables WHERE table_name = ? AND board_config = ?", (table_name, key))
+                result = cursor.fetchone()
+                
+                # --- DEBUG LOG 2: What is coming back from the database ---
+                if result:
+                    logger.info(f"DATABASE_RESULT: Received result: '{result[0]}'")
+                    if result[0] == 'WIN': return 1000
+                    if result[0] == 'LOSS': return -1000
+                    return 0 # Draw
+                else:
+                    logger.info("DATABASE_RESULT: No entry found for this configuration.")
+
+        except Exception as e:
+            logger.error(f"DATABASE: Error querying endgame_tables: {e}")
+            
     # --- 1. Material Score: Kings are worth 1.5x a regular piece ---
     white_men = board.white_left - board.white_kings
     red_men = board.red_left - board.red_kings

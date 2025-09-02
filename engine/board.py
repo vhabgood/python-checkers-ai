@@ -5,8 +5,9 @@ import random
 import copy
 import os
 import pickle
-from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE, COORD_TO_ACF 
+from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE, COORD_TO_ACF
 from .piece import Piece
+from engine.search import get_all_move_sequences
 
 logger = logging.getLogger('board')
 
@@ -22,50 +23,47 @@ class Board:
         self.hash = self._compute_hash()
         self.history = [copy.deepcopy(self.board)]
 
+    # --- THIS IS THE PERMANENT FIX ---
+    # This special method teaches the Board how to be copied correctly.
+    # It will be used automatically by all parts of the AI.
+    def __deepcopy__(self, memo):
+        # Create a new, empty Board instance.
+        new_board = Board(db_conn=None)
+        memo[id(self)] = new_board
+        
+        # Copy every attribute from the old board to the new one...
+        for k, v in self.__dict__.items():
+            # ...except for the live database connection.
+            if k != 'db_conn':
+                setattr(new_board, k, copy.deepcopy(v, memo))
+        
+        # Share the original database connection with the new copy.
+        new_board.db_conn = self.db_conn
+        return new_board
+
     def apply_move(self, path):
-        """
-        Applies a move sequence to a DEEP COPY of the board. This version
-        safely handles the database connection during the copy process.
-        """
-        # --- THIS IS THE FIX ---
-        # Temporarily remove the database connection before copying.
-        db_connection = self.db_conn
-        self.db_conn = None
-        
-        # Now, the deepcopy will succeed.
+        # This function now works correctly because of the custom __deepcopy__ method.
         temp_board = copy.deepcopy(self)
-        
-        # Restore the connection on both the original and the new copy.
-        self.db_conn = db_connection
-        temp_board.db_conn = db_connection
-        
-        # The rest of the function proceeds as normal...
         start_pos = path[0]
         piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
 
         if piece_to_move == 0:
-            logger.error(f"APPLY_MOVE: Attempted to move from an empty square at {start_pos} for path {path}.")
             return temp_board
 
         captured_pieces = []
         for i in range(len(path) - 1):
             p_start, p_end = path[i], path[i+1]
             if abs(p_start[0] - p_end[0]) == 2:
-                mid_row = (p_start[0] + p_end[0]) // 2
-                mid_col = (p_start[1] + p_end[1]) // 2
+                mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
                 captured = temp_board.get_piece(mid_row, mid_col)
-                if captured:
-                    captured_pieces.append(captured)
+                if captured: captured_pieces.append(captured)
         
-        if captured_pieces:
-            temp_board._remove(captured_pieces)
+        if captured_pieces: temp_board._remove(captured_pieces)
 
         final_pos = path[-1]
         temp_board.move(piece_to_move, final_pos[0], final_pos[1])
-        
         temp_board.turn = WHITE if temp_board.turn == RED else RED
         temp_board.hash ^= temp_board.zobrist_table['turn']
-
         return temp_board
 
     def _init_zobrist(self):
@@ -153,22 +151,49 @@ class Board:
         return pieces
 
     def winner(self):
-        if self.red_left <= 0: return WHITE
-        if self.white_left <= 0: return RED
-        if not self.get_all_valid_moves(self.turn):
+        """
+        Determines the winner of the game. Returns the winning color or None.
+        """
+        if self.red_left <= 0:
+            return WHITE
+        if self.white_left <= 0:
+            return RED
+        
+        # Check if the current player has any valid moves
+        if not list(get_all_move_sequences(self, self.turn)):
+            # If the current player has no moves, they lose.
             return WHITE if self.turn == RED else RED
+            
         return None
 
-    def draw(self, win, font, show_nums, flipped, valid_moves):
+    def draw(self, win, font, show_nums, flipped, valid_moves, last_move_path=None):
+        """Draws the board, pieces, and highlights for valid and previous moves."""
         self.draw_squares(win)
 
+        # --- FIX: New, cleaner highlighting for the last move ---
+        if last_move_path:
+            start_coord = last_move_path[0]
+            end_coord = last_move_path[-1]
+            
+            # Faint yellow highlight for the starting square
+            start_highlight = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            start_highlight.fill((200, 200, 60, 70))
+            win.blit(start_highlight, (start_coord[1] * SQUARE_SIZE, start_coord[0] * SQUARE_SIZE))
+
+            # Brighter yellow highlight for the destination square
+            end_highlight = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            end_highlight.fill((200, 200, 60, 120))
+            win.blit(end_highlight, (end_coord[1] * SQUARE_SIZE, end_coord[0] * SQUARE_SIZE))
+            
+        # Highlight valid destination squares for a selected piece
         if valid_moves:
             for move in valid_moves:
                 row, col = move
                 highlight_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
-                highlight_surface.fill((60, 120, 200, 100))
+                highlight_surface.fill((60, 120, 200, 100)) # Blue highlight
                 win.blit(highlight_surface, (col * SQUARE_SIZE, row * SQUARE_SIZE))
 
+        # Draw all the pieces
         for row in range(ROWS):
             for col in range(COLS):
                 piece = self.board[row][col]
@@ -249,3 +274,58 @@ class Board:
                     else:
                         self.white_left += 1
                         if piece.king: self.white_kings += 1
+                        
+    # In engine/board.py
+
+    def _get_endgame_key(self):
+        """
+        If the board is in a known endgame state, generates the appropriate key for a database lookup.
+        Returns (table_name, key_string) or (None, None) if not in a known endgame.
+        """
+        w_men = self.white_left - self.white_kings
+        r_men = self.red_left - self.red_kings
+        w_kings = self.white_kings
+        r_kings = self.red_kings
+        
+        # --- FIX: Expanded logic to recognize all of your endgame database types ---
+        table_name = None
+        # This logic defines which endgame tables your AI knows about.
+        if w_men == 0 and r_men == 0: # Kings vs Kings
+            if {r_kings, w_kings} == {2, 1}: table_name = "db_2v1_kings"
+            elif {r_kings, w_kings} == {3, 1}: table_name = "db_3v1_kings"
+            elif {r_kings, w_kings} == {3, 2}: table_name = "db_3v2_kings"
+            elif {r_kings, w_kings} == {3, 3}: table_name = "db_3v3_kings"
+            elif {r_kings, w_kings} == {4, 2}: table_name = "db_4v2_kings"
+            elif {r_kings, w_kings} == {4, 3}: table_name = "db_4v3_kings"
+        # Men vs Men (add more if you have them)
+        elif w_kings == 0 and r_kings == 0:
+            if {r_men, w_men} == {2, 1}: table_name = "db_2v1_men"
+        # Mixed Pieces (add more if you have them)
+        elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 0: table_name = "db_2k1m_vs_2k"
+        elif w_kings == 2 and w_men == 1 and r_kings == 2 and r_men == 0: table_name = "db_2k1m_vs_2k"
+        # ... you can continue adding more specific mixed-piece scenarios here
+
+        if table_name is None:
+            return None, None
+
+        # If we have a match, generate the key used by the database
+        white_king_pos, red_king_pos, white_men_pos, red_men_pos = [], [], [], []
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.get_piece(r,c)
+                if piece != 0:
+                    pos_acf = constants.COORD_TO_ACF.get((r,c))
+                    if piece.color == WHITE:
+                        if piece.king: white_king_pos.append(pos_acf)
+                        else: white_men_pos.append(pos_acf)
+                    else: # RED
+                        if piece.king: red_king_pos.append(pos_acf)
+                        else: red_men_pos.append(pos_acf)
+        
+        # Sort positions to create a canonical (consistent) key
+        key_tuple = (
+            tuple(sorted(white_king_pos)), tuple(sorted(white_men_pos)),
+            tuple(sorted(red_king_pos)), tuple(sorted(red_men_pos)),
+            self.turn
+        )
+        return table_name, str(key_tuple)
