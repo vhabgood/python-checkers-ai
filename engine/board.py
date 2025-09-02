@@ -275,8 +275,6 @@ class Board:
                         self.white_left += 1
                         if piece.king: self.white_kings += 1
                         
-    # In engine/board.py
-
     def _get_endgame_key(self):
         """
         If the board is in a known endgame state, generates the appropriate key for a database lookup.
@@ -287,7 +285,6 @@ class Board:
         w_kings = self.white_kings
         r_kings = self.red_kings
         
-        # --- FIX: Expanded logic to recognize all of your endgame database types ---
         table_name = None
         # This logic defines which endgame tables your AI knows about.
         if w_men == 0 and r_men == 0: # Kings vs Kings
@@ -297,13 +294,12 @@ class Board:
             elif {r_kings, w_kings} == {3, 3}: table_name = "db_3v3_kings"
             elif {r_kings, w_kings} == {4, 2}: table_name = "db_4v2_kings"
             elif {r_kings, w_kings} == {4, 3}: table_name = "db_4v3_kings"
-        # Men vs Men (add more if you have them)
+        # Men vs Men
         elif w_kings == 0 and r_kings == 0:
             if {r_men, w_men} == {2, 1}: table_name = "db_2v1_men"
-        # Mixed Pieces (add more if you have them)
+        # Mixed Pieces
         elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 0: table_name = "db_2k1m_vs_2k"
         elif w_kings == 2 and w_men == 1 and r_kings == 2 and r_men == 0: table_name = "db_2k1m_vs_2k"
-        # ... you can continue adding more specific mixed-piece scenarios here
 
         if table_name is None:
             return None, None
@@ -312,9 +308,11 @@ class Board:
         white_king_pos, red_king_pos, white_men_pos, red_men_pos = [], [], [], []
         for r in range(ROWS):
             for c in range(COLS):
-                piece = self.get_piece(r,c)
+                piece = self.get_piece(r, c)
                 if piece != 0:
-                    pos_acf = constants.COORD_TO_ACF.get((r,c))
+                    # --- THIS IS THE FIX ---
+                    # Removed the unnecessary 'constants.' prefix
+                    pos_acf = COORD_TO_ACF.get((r,c))
                     if piece.color == WHITE:
                         if piece.king: white_king_pos.append(pos_acf)
                         else: white_men_pos.append(pos_acf)
