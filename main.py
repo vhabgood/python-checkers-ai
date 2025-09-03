@@ -9,8 +9,9 @@ import argparse
 from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog
+from engine.constants import SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_BG  #change these only in /constants.py
 
-# --- Logging Configuration ---
+# --- Logging Configuration (unchanged) ---
 if not os.path.exists('logs'):
     os.makedirs('logs')
 log_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '_checkers_debug.log'
@@ -29,13 +30,12 @@ def parse_arguments():
     parser.add_argument('--debug-board', action='store_true', help='Enable detailed board and AI logging.')
     return parser.parse_args()
 
-# Import game states and game logic
+# --- UI Constants (unchanged) ---
+SCREEN_SIZE = (SCREEN_WIDTH, SCREEN_HEIGHT)
+
+
 from game_states import PlayerSelectionScreen, LoadingScreen
 from engine.checkers_game import CheckersGame
-from engine.constants import SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_BG
-
-# --- UI Constants ---
-SCREEN_SIZE = (SCREEN_WIDTH, SCREEN_HEIGHT)
 
 class App:
     def __init__(self, args):
@@ -46,6 +46,7 @@ class App:
         self.args = args
         self.done = False
 
+        # --- FIX: Initialize and hide tkinter root on the main thread ---
         self.tk_root = tk.Tk()
         self.tk_root.withdraw()
 
@@ -87,6 +88,7 @@ class App:
         while not self.done:
             events = pygame.event.get()
 
+            # --- FIX: Handle file dialog requests from the main loop ---
             if hasattr(self.state, 'wants_to_load_pdn') and self.state.wants_to_load_pdn:
                 filepath = filedialog.askopenfilename(
                     parent=self.tk_root,
@@ -94,7 +96,9 @@ class App:
                     filetypes=(("PDN files", "*.pdn"), ("All files", "*.*"))
                 )
                 if filepath:
+                    # Pass the chosen path back to the game state to handle the logic
                     self.state.load_pdn_from_file(filepath)
+                # Reset the flag whether a file was chosen or not
                 self.state.wants_to_load_pdn = False
 
             for event in events:

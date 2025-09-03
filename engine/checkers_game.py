@@ -337,55 +337,58 @@ class CheckersGame:
             self.feedback_timer = 180
             self.feedback_color = (220, 180, 180)
     
-    
-    def load_pdn_from_file(self):
-        filepath = filedialog.askopenfilename(
-            title="Select a PDN file",
-            filetypes=(("PDN files", "*.pdn"), ("All files", "*.*"))
-        )
-        if not filepath: return
+    def load_pdn_from_file(self, filepath):
+        """
+        Loads and parses a PDN file provided by the main loop.
+        Includes detailed debugging logs.
+        """
+        logger.info(f"PDN_LOAD: Received filepath from main loop: {filepath}")
         try:
             with open(filepath, 'r') as f:
                 pdn_text = f.read()
+            
+            logger.debug("PDN_LOAD: Successfully read file content.")
             movetext_match = re.search(r'1\..*?(?=\[|$)', pdn_text, re.DOTALL)
-            if not movetext_match: raise ValueError("No valid movetext found in PDN file.")
+            if not movetext_match:
+                raise ValueError("No valid movetext found in PDN file.")
+
             movetext = movetext_match.group(0)
             moves_only = re.sub(r'\{.*?\}|\d+\.|\*', '', movetext).split()
+            logger.debug(f"PDN_LOAD: Found {len(moves_only)} moves to parse: {moves_only}")
+
             self.reset_game()
-            for move_str in moves_only:
+            logger.debug("PDN_LOAD: Board has been reset to starting position.")
+            
+            for i, move_str in enumerate(moves_only):
+                logger.debug(f"PDN_LOAD: Parsing move {i+1}: '{move_str}'")
                 separator = 'x' if 'x' in move_str else '-'
                 parts = [int(p) for p in move_str.split(separator)]
+                
                 path_to_apply = []
-                for i in range(len(parts) - 1):
-                    start_coord = constants.ACF_TO_COORD.get(parts[i])
-                    end_coord = constants.ACF_TO_COORD.get(parts[i+1])
+                for j in range(len(parts) - 1):
+                    start_coord = constants.ACF_TO_COORD.get(parts[j])
+                    end_coord = constants.ACF_TO_COORD.get(parts[j+1])
                     if start_coord and end_coord:
-                        if i == 0: path_to_apply.append(start_coord)
+                        if j == 0: path_to_apply.append(start_coord)
                         path_to_apply.append(end_coord)
-                if not path_to_apply: continue
+                
+                if not path_to_apply:
+                    logger.warning(f"PDN_LOAD: Could not parse move '{move_str}'. Skipping.")
+                    continue
+                
                 self._apply_move_sequence(path_to_apply)
+                logger.debug(f"PDN_LOAD: Successfully applied move {i+1}.")
+            
             self.feedback_message = f"Loaded {os.path.basename(filepath)}"
             self.feedback_timer = 180
             self.feedback_color = (180, 220, 180)
+            logger.info(f"Successfully loaded game state from {filepath}")
+
         except Exception as e:
             self.feedback_message = "Error loading PDN!"
             self.feedback_timer = 180
             self.feedback_color = (220, 180, 180)
-            logger.error(f"Failed to load PDN file '{filepath}': {e}")
-
-    def _handle_click(self, pos):
-        if pos[0] >= BOARD_SIZE or pos[1] >= BOARD_SIZE: return
-        if self.turn != self.player_color or self.ai_is_thinking: return
-        
-        col, row = pos[0] // SQUARE_SIZE, pos[1] // SQUARE_SIZE
-        if self.board_flipped:
-            row, col = ROWS - 1 - row, COLS - 1 - col
-        
-        if self.selected_piece:
-            if self._attempt_move((row, col)):
-                return
-        
-        self._select_piece(row, col)
+            logger.error(f"Failed to load PDN file '{filepath}': {e}", exc_info=True)
 
     def _select_piece(self, row, col):
         piece = self.board.get_piece(row, col)
@@ -421,4 +424,6 @@ class CheckersGame:
         return False
         
     def request_pdn_load(self):
-        self.wants_to_load_pdn = True 
+        """Sets a flag to tell the main loop to open the file dialog."""
+        logger.debug("PDN_LOAD: Button clicked. Requesting file dialog from main loop.")
+        self.wants_to_load_pdn = True
