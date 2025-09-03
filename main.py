@@ -29,13 +29,13 @@ def parse_arguments():
     parser.add_argument('--debug-board', action='store_true', help='Enable detailed board and AI logging.')
     return parser.parse_args()
 
-# --- FROM OWNER: DO NOT ADJUST THIS FOR ANY REASON WITHOUT ME KNOWING ---
-SCREEN_SIZE = (800, 600)
-COLOR_BG = (40, 40, 40)
-
 # Import game states and game logic
 from game_states import PlayerSelectionScreen, LoadingScreen
 from engine.checkers_game import CheckersGame
+from engine.constants import SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_BG
+
+# --- UI Constants ---
+SCREEN_SIZE = (SCREEN_WIDTH, SCREEN_HEIGHT)
 
 class App:
     def __init__(self, args):
