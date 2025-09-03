@@ -8,8 +8,6 @@ import time
 import sqlite3
 import os
 import re
-import tkinter as tk
-from tkinter import filedialog
 from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_AI_DEPTH
 import engine.constants as constants
@@ -25,8 +23,6 @@ class CheckersGame:
         self.args = args
         self.db_conn = None
         try:
-            self.tk_root = tk.Tk()
-            self.tk_root.withdraw()
             self.db_conn = sqlite3.connect("checkers_database.db")
         except Exception as e:
             logger.error(f"DATABASE: Failed to connect: {e}")
