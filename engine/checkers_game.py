@@ -25,6 +25,7 @@ class CheckersGame:
         self.args = args
         self.db_conn = None
         try:
+            # --- FIX 3: Initialize and hide the root tkinter window to prevent crashes ---
             self.tk_root = tk.Tk()
             self.tk_root.withdraw()
             self.db_conn = sqlite3.connect("checkers_database.db")
@@ -45,29 +46,31 @@ class CheckersGame:
         self.dev_mode = False
         self.board_flipped = False
         self.move_history = []
-        self.large_font = pygame.font.SysFont(None, 24)
+        self.large_font = pygame.font.SysFont(None, 22)
         self.font = pygame.font.SysFont(None, 20)
-        # --- FIX 2: New, smaller font for move history ---
-        self.history_font = pygame.font.SysFont(None, 18)
         self.dev_font = pygame.font.SysFont(None, 18)
         self.winner_font = pygame.font.SysFont(None, 50)
+        # --- FIX 2: New, smaller font for the expanded move history ---
+        self.history_font = pygame.font.SysFont(None, 16)
         self.ai_depth = DEFAULT_AI_DEPTH
         self.winner = None
         self.last_move_path = None
 
-        button_width = 180
+        # --- FIX 1: Button sizes reduced by 5% ---
+        button_width = 171 # 180 * 0.95
+        button_height = 28 # 30 * 0.95
         panel_x = BOARD_SIZE + 10
-        button_y_start = self.screen.get_height() - 40
+        button_y_start = self.screen.get_height() - 38 # Adjusted for new height
         self.buttons = [
-            Button("Dev Mode", (panel_x, button_y_start), (button_width, 30), self.toggle_dev_mode),
-            Button("Board Numbers", (panel_x, button_y_start - 40), (button_width, 30), self.toggle_board_numbers),
-            Button("Load PDN", (panel_x, button_y_start - 80), (button_width, 30), self.load_pdn_from_file),
-            Button("Export to PDN", (panel_x, button_y_start - 120), (button_width, 30), self.export_to_pdn),
-            Button("Force AI Move", (panel_x, button_y_start - 160), (button_width, 30), self.force_ai_move),
-            Button("Reset", (panel_x, button_y_start - 200), (button_width, 30), self.reset_game),
-            Button("Undo", (panel_x, button_y_start - 240), (button_width, 30), self.undo_move),
-            Button("-", (panel_x + 100, button_y_start - 275), (30, 30), self.decrease_ai_depth),
-            Button("+", (panel_x + 140, button_y_start - 275), (30, 30), self.increase_ai_depth)
+            Button("Dev Mode", (panel_x, button_y_start), (button_width, button_height), self.toggle_dev_mode),
+            Button("Board Numbers", (panel_x, button_y_start - 38), (button_width, button_height), self.toggle_board_numbers),
+            Button("Load PDN", (panel_x, button_y_start - 76), (button_width, button_height), self.load_pdn_from_file),
+            Button("Export to PDN", (panel_x, button_y_start - 114), (button_width, button_height), self.export_to_pdn),
+            Button("Force AI Move", (panel_x, button_y_start - 152), (button_width, button_height), self.force_ai_move),
+            Button("Reset", (panel_x, button_y_start - 190), (button_width, button_height), self.reset_game),
+            Button("Undo", (panel_x, button_y_start - 228), (button_width, button_height), self.undo_move),
+            Button("-", (panel_x + 100, button_y_start - 263), (30, 28), self.decrease_ai_depth),
+            Button("+", (panel_x + 140, button_y_start - 263), (30, 28), self.increase_ai_depth)
         ]
 
         self.ai_is_thinking = False
@@ -77,8 +80,8 @@ class CheckersGame:
         self.force_ai_flag = False
         self.feedback_message = ""
         self.feedback_timer = 0
-        self.feedback_color = (180, 220, 180)
-
+        self.feedback_color = (180, 220, 180)   
+        
     def _coord_to_acf(self, coord):
         return str(constants.COORD_TO_ACF.get(coord, "??"))
 
@@ -198,7 +201,7 @@ class CheckersGame:
 
     def draw_side_panel(self):
         panel_x = BOARD_SIZE
-        panel_width = self.screen.get_width() - panel_x
+        panel_width = self.screen.get_width() - (panel_x)
         panel_height = self.screen.get_height()
         panel_rect = pygame.Rect(panel_x, 0, panel_width, panel_height)
         pygame.draw.rect(self.screen, (20, 20, 20), panel_rect)
@@ -222,20 +225,39 @@ class CheckersGame:
         self.screen.blit(history_title, (panel_x + 10, history_y_start))
         y_offset = history_y_start + 30
         
+        # --- FIX 2: Tournament-style two-column move history ---
         num_moves_to_show = 20
         start_index = max(0, len(self.move_history) - num_moves_to_show)
         if start_index % 2 != 0: start_index -= 1
         display_history = self.move_history[start_index:]
+        
+        moves_per_column = (num_moves_to_show // 4)
+        if (num_moves_to_show % 4) > 0: moves_per_column +=1
 
-        for i in range(0, len(display_history), 2):
-            move_num = (start_index + i) // 2 + 1
-            white_move = display_history[i]
-            red_move = display_history[i+1] if (i+1) < len(display_history) else ""
-            line = f"{move_num}. {white_move:<10} {red_move:<10}"
-            # --- FIX 2: Use the new, smaller font ---
-            move_surface = self.history_font.render(line, True, (220, 220, 220))
-            self.screen.blit(move_surface, (panel_x + 15, y_offset))
-            y_offset += 20
+        col1_x = panel_x + 15
+        col2_x = panel_x + (panel_width // 2)
+        line_height = 18
+
+        for i in range(moves_per_column):
+            # First column
+            idx1 = i * 2
+            if idx1 < len(display_history):
+                move_num1 = (start_index + idx1) // 2 + 1
+                white_move1 = display_history[idx1]
+                red_move1 = display_history[idx1+1] if (idx1+1) < len(display_history) else ""
+                line1 = f"{move_num1}. {white_move1} {red_move1}"
+                move_surface1 = self.history_font.render(line1, True, (220, 220, 220))
+                self.screen.blit(move_surface1, (col1_x, y_offset + i * line_height))
+
+            # Second column
+            idx2 = (i + moves_per_column) * 2
+            if idx2 < len(display_history):
+                move_num2 = (start_index + idx2) // 2 + 1
+                white_move2 = display_history[idx2]
+                red_move2 = display_history[idx2+1] if (idx2+1) < len(display_history) else ""
+                line2 = f"{move_num2}. {white_move2} {red_move2}"
+                move_surface2 = self.history_font.render(line2, True, (220, 220, 220))
+                self.screen.blit(move_surface2, (col2_x, y_offset + i * line_height))
         
         depth_button = self.buttons[-2]
         depth_text_surface = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
@@ -375,67 +397,37 @@ class CheckersGame:
         self._select_piece(row, col)
 
     def _select_piece(self, row, col):
-        """
-        Selects a piece and calculates ALL of its possible final destination squares,
-        including those at the end of multi-jump sequences.
-        """
         piece = self.board.get_piece(row, col)
         if piece != 0 and piece.color == self.turn:
             self.selected_piece = piece
-            
-            # Get all valid move sequences for the board.
-            all_valid_sequences = list(get_all_move_sequences(self.board, self.turn))
-            
-            # Check if any of these are jumps.
-            is_jump_available = any(abs(path[0][0] - path[1][0]) == 2 for path in all_valid_sequences)
-
-            # If a jump is available, only consider moves from pieces that can jump.
-            if is_jump_available:
-                sequences_for_this_piece = [path for path in all_valid_sequences if path[0] == (row, col) and abs(path[0][0] - path[1][0]) == 2]
-                if not sequences_for_this_piece:
-                    logger.warning("A jump is mandatory. Select a piece that can perform a jump.")
-                    self.selected_piece = None
-                    self.valid_moves = {}
-                    return False
-            else:
-                 sequences_for_this_piece = [path for path in all_valid_sequences if path[0] == (row, col)]
-            
-            # Store the valid final destination squares for this piece.
-            # The key is the start pos, value is a set of valid end positions.
-            self.valid_moves = {(row, col): {path[-1] for path in sequences_for_this_piece}}
-            logger.debug(f"Piece selected at {(row, col)}. Valid destinations: {self.valid_moves.get((row, col), 'None')}")
+            self.valid_moves = self.board.get_all_valid_moves(self.turn)
+            # --- FIX 4: Use ACF format in log message ---
+            log_moves = self.valid_moves.get((row, col), 'None')
+            if isinstance(log_moves, set):
+                log_moves = {self._coord_to_acf(m) for m in log_moves}
+            logger.debug(f"Piece selected at {self._coord_to_acf((row, col))}. Valid destinations: {log_moves}")
             return True
-
-        self.selected_piece = None
-        self.valid_moves = {}
+        self.selected_piece, self.valid_moves = None, {}
         return False
 
     def _attempt_move(self, move_end_pos):
-        """
-        Attempts to execute a move for the selected piece to the clicked destination,
-        correctly handling single moves and multi-jumps.
-        """
         if not self.selected_piece: return False
-        
         start_pos = (self.selected_piece.row, self.selected_piece.col)
-        
-        # Check if the clicked destination is valid for the selected piece.
         valid_destinations = self.valid_moves.get(start_pos, set())
+        
         if move_end_pos in valid_destinations:
-            # Find the full move sequence that matches this start and end.
             all_possible_sequences = list(get_all_move_sequences(self.board, self.turn))
-            found_path = None
-            for path in all_possible_sequences:
-                if path[0] == start_pos and path[-1] == move_end_pos:
-                    found_path = path
-                    break
+            found_path = next((path for path in all_possible_sequences if path[0] == start_pos and path[-1] == move_end_pos), None)
             
             if found_path:
+                # --- FIX 4: Use ACF format in log message ---
                 logger.info(f"Player move validated. Applying sequence: {self._format_move_path(found_path)}")
                 self._apply_move_sequence(found_path)
                 return True
-
-        logger.warning(f"Invalid move attempted from {start_pos} to {move_end_pos}. Clearing selection.")
-        self.selected_piece = None
-        self.valid_moves = {}
+        # --- FIX 4: Use ACF format in log message ---
+        logger.warning(f"Invalid move attempted from {self._coord_to_acf(start_pos)} to {self._coord_to_acf(move_end_pos)}. Clearing selection.")
+        self.selected_piece, self.valid_moves = None, {}
         return False
+        
+    def request_pdn_load(self):
+        self.wants_to_load_pdn = True 

@@ -5,8 +5,6 @@ from .constants import RED, WHITE, ROWS, COLS
 
 logger = logging.getLogger('board')
 
-# In engine/evaluation.py
-
 def evaluate_board(board):
     """
     Calculates the static score of the board. Now checks endgame databases with detailed logging.
@@ -39,6 +37,7 @@ def evaluate_board(board):
     white_men = board.white_left - board.white_kings
     red_men = board.red_left - board.red_kings
     material_score = (white_men - red_men) + (board.white_kings - board.red_kings) * 1.5
+
     white_pos_score, red_pos_score = 0, 0
     PROMOTION_PROGRESS_BONUS = 0.1
     CENTER_CONTROL_BONUS = 0.1
@@ -55,6 +54,7 @@ def evaluate_board(board):
             red_pos_score += CENTER_CONTROL_BONUS
 
     positional_score = white_pos_score - red_pos_score
+
     king_advantage = 0
     if board.white_kings > 0 and board.red_kings == 0:
         king_advantage = KING_ADVANTAGE_BONUS
