@@ -2,7 +2,7 @@
 import logging
 from .piece import Piece
 from .constants import RED, WHITE, ROWS, COLS
-from engine.search import get_all_move_sequences
+# The incorrect import has been removed.
 
 logger = logging.getLogger('board')
 
@@ -44,7 +44,7 @@ def evaluate_board(board):
     
     # --- Mobility Score ---
     MOBILITY_WEIGHT = 0.1
-    # Now calls the board's own method
+    # This now correctly calls the method on the board object passed into the function
     white_moves_count = len(list(board.get_all_move_sequences(WHITE)))
     red_moves_count = len(list(board.get_all_move_sequences(RED)))
     mobility_score = (white_moves_count - red_moves_count) * MOBILITY_WEIGHT
@@ -59,5 +59,13 @@ def evaluate_board(board):
         if piece.col in {2, 3, 4, 5}:
             red_pos_score += CENTER_CONTROL_BONUS
 
+    positional_score = white_pos_score - red_pos_score
+
+    king_advantage = 0
+    if board.white_kings > 0 and board.red_kings == 0:
+        king_advantage = KING_ADVANTAGE_BONUS
+    elif board.red_kings > 0 and board.white_kings == 0:
+        king_advantage = -KING_ADVANTAGE_BONUS
+        
     final_score = (material_score * 10) + positional_score + king_advantage + mobility_score
     return final_score

@@ -12,7 +12,7 @@ from .board import Board
 from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_AI_DEPTH
 import engine.constants as constants
 from game_states import Button
-from engine.search import get_ai_move_analysis, get_all_move_sequences
+from engine.search import get_ai_move_analysis
 from engine.evaluation import evaluate_board
 
 logger = logging.getLogger('gui')
@@ -53,12 +53,10 @@ class CheckersGame:
         self.pending_pdn_load = False
         self.game_is_active = True
 
-        # --- History Navigation State ---
         self.full_move_history = []
         self.board_history = [copy.deepcopy(self.board)]
         self.history_index = 0
 
-        # --- Button Layout ---
         button_width = 171
         button_height = 28
         side_panel_width = self.screen.get_width() - BOARD_SIZE
@@ -100,6 +98,7 @@ class CheckersGame:
             self.history_index -= 1
             self.game_is_active = False
             self.selected_piece = None
+            self.ai_top_moves = [] # Clear analysis when stepping
             self._update_game_state_from_history()
             logger.debug(f"HISTORY: Stepped back to index {self.history_index}")
 
@@ -107,17 +106,14 @@ class CheckersGame:
         if self.history_index < len(self.board_history) - 1:
             self.history_index += 1
             self._update_game_state_from_history()
-            # If we step forward to the latest move, the game can become active again
             if self.history_index == len(self.board_history) - 1:
                 self.game_is_active = True
             logger.debug(f"HISTORY: Stepped forward to index {self.history_index}")
 
     def _update_game_state_from_history(self):
-        """Updates the main board and turn from the history index."""
         self.board = self.board_history[self.history_index]
         self.turn = self.board.turn
         self.winner = self.board.winner()
-        self.ai_top_moves = []
         # Update last move for highlighting
         if self.history_index > 0:
             last_move_str = self.full_move_history[self.history_index - 1]
@@ -129,7 +125,7 @@ class CheckersGame:
 
     def start_ai_turn(self, force_color=None):
         self.ai_is_thinking = True
-        self.ai_top_moves = []
+        self.ai_top_moves = [] # Clear previous analysis
         self.ai_best_move_for_execution = None
         color_to_move = force_color if force_color else self.turn
         board_copy = self.board_history[self.history_index]
@@ -192,8 +188,9 @@ class CheckersGame:
         try:
             ai_results = self.ai_move_queue.get_nowait()
             self.ai_is_thinking = False
-            self.ai_top_moves = ai_results['top']
+            self.ai_top_moves = ai_results['top'] # Get the new analysis
             self.ai_best_move_for_execution = ai_results['best']
+            
             if self.pending_pdn_load:
                 self.wants_to_load_pdn = True
                 self.pending_pdn_load = False
@@ -213,7 +210,6 @@ class CheckersGame:
         self.screen.fill((40, 40, 40))
         current_board = self.board_history[self.history_index]
         
-        # *** BUG FIX: Use the turn from the historical board state ***
         turn_for_moves = current_board.turn 
         self.valid_moves = current_board.get_all_valid_moves(turn_for_moves)
         
@@ -257,28 +253,44 @@ class CheckersGame:
         history_title = self.large_font.render("Move History:", True, (200, 200, 200))
         self.screen.blit(history_title, (panel_x + 10, history_y_start))
         y_offset = history_y_start + 30
-        
-        num_moves_to_show = 20
-        start_index = max(0, len(self.full_move_history) - num_moves_to_show)
-        display_history = self.full_move_history[start_index:]
-        
-        moves_per_column = (num_moves_to_show + 1) // 2
-        col1_x, col2_x = panel_x + 15, panel_x + (panel_width // 2)
         line_height = 18
 
+        # --- NEW: Rewritten Move History Display Logic ---
+        moves_per_column = 12 
+        col1_x = panel_x + 15
+        col2_x = panel_x + (panel_width // 2)
+
         for i in range(moves_per_column):
-            for col_num, base_idx in enumerate([i, i + moves_per_column]):
-                if base_idx < len(display_history):
-                    move_num = start_index + base_idx
-                    player_move = display_history[base_idx]
-                    line = f"{(move_num // 2) + 1}{'.' if move_num % 2 == 0 else '...'} {player_move}"
-                    
-                    is_current_move = move_num == self.history_index -1
-                    color = (255, 255, 0) if is_current_move else (220, 220, 220)
-                    
-                    move_surface = self.history_font.render(line, True, color)
-                    x_pos = col1_x if col_num == 0 else col2_x
-                    self.screen.blit(move_surface, (x_pos, y_offset + i * line_height))
+            # First Column
+            move_idx = i * 2
+            if move_idx < len(self.full_move_history):
+                move_num = i + 1
+                red_move = self.full_move_history[move_idx]
+                white_move = self.full_move_history[move_idx + 1] if move_idx + 1 < len(self.full_move_history) else ""
+                line = f"{move_num}. {red_move} {white_move}"
+                
+                # Highlight based on history index
+                is_current_red = move_idx == self.history_index - 1
+                is_current_white = move_idx + 1 == self.history_index - 1
+                color = (255, 255, 0) if (is_current_red or is_current_white) else (220, 220, 220)
+
+                move_surface = self.history_font.render(line, True, color)
+                self.screen.blit(move_surface, (col1_x, y_offset + i * line_height))
+
+            # Second Column
+            move_idx = (i + moves_per_column) * 2
+            if move_idx < len(self.full_move_history):
+                move_num = i + moves_per_column + 1
+                red_move = self.full_move_history[move_idx]
+                white_move = self.full_move_history[move_idx + 1] if move_idx + 1 < len(self.full_move_history) else ""
+                line = f"{move_num}. {red_move} {white_move}"
+                
+                is_current_red = move_idx == self.history_index - 1
+                is_current_white = move_idx + 1 == self.history_index - 1
+                color = (255, 255, 0) if (is_current_red or is_current_white) else (220, 220, 220)
+
+                move_surface = self.history_font.render(line, True, color)
+                self.screen.blit(move_surface, (col2_x, y_offset + i * line_height))
 
         depth_button = self.buttons[-2]
         depth_text_surface = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
@@ -320,7 +332,6 @@ class CheckersGame:
             self.start_ai_turn(self.turn)
 
     def reset_game(self):
-        """Resets the game to its initial state."""
         self.board = Board(db_conn=self.db_conn)
         self.turn = self.board.turn
         self.selected_piece = None
@@ -342,9 +353,11 @@ class CheckersGame:
                 f.write(f'[Black "{"Player" if self.player_color == RED else "AI"}"]\n')
                 f.write('[Result "*"]\n\n')
                 move_str = ""
-                for i, move in enumerate(self.full_move_history):
-                    if i % 2 == 0: move_str += f"{i//2 + 1}. {move} "
-                    else: move_str += f"{move} "
+                for i in range(0, len(self.full_move_history), 2):
+                    move_num = i // 2 + 1
+                    red_move = self.full_move_history[i]
+                    white_move = self.full_move_history[i+1] if i + 1 < len(self.full_move_history) else ""
+                    move_str += f"{move_num}. {red_move} {white_move} "
                 f.write(move_str.strip() + " *\n")
             self.feedback_message = f"Saved to {filename}"
             self.feedback_timer, self.feedback_color = 180, (180, 220, 180)
@@ -409,7 +422,7 @@ class CheckersGame:
         current_board = self.board_history[self.history_index]
         start_pos = (self.selected_piece.row, self.selected_piece.col)
         
-        all_possible_sequences = list(get_all_move_sequences(current_board, self.turn))
+        all_possible_sequences = list(current_board.get_all_move_sequences(self.turn))
         found_path = next((path for path in all_possible_sequences if path[0] == start_pos and path[-1] == move_end_pos), None)
         
         if found_path:
