@@ -39,25 +39,26 @@ class CheckersGame:
         self.show_board_numbers = False
         self.dev_mode = False
         self.board_flipped = False
-        self.move_history = []
+        
         self.large_font = pygame.font.SysFont(None, 24)
         self.font = pygame.font.SysFont(None, 20)
         self.dev_font = pygame.font.SysFont(None, 18)
         self.winner_font = pygame.font.SysFont(None, 50)
         self.history_font = pygame.font.SysFont(None, 16)
+        
         self.ai_depth = DEFAULT_AI_DEPTH
         self.winner = None
         self.last_move_path = None
         self.wants_to_load_pdn = False
         self.pending_pdn_load = False
         self.game_is_active = True
-        
-        # --- NEW: History Navigation ---
-        self.full_move_history = [] # Stores PDN move strings
-        self.board_history = [copy.deepcopy(self.board)] # Stores board objects
+
+        # --- History Navigation State ---
+        self.full_move_history = []
+        self.board_history = [copy.deepcopy(self.board)]
         self.history_index = 0
 
-        # --- FIX: Buttons centered in the new, narrower side panel ---
+        # --- Button Layout ---
         button_width = 171
         button_height = 28
         side_panel_width = self.screen.get_width() - BOARD_SIZE
@@ -71,8 +72,8 @@ class CheckersGame:
             Button("Export to PDN", (button_x, button_y_start - 114), (button_width, button_height), self.export_to_pdn),
             Button("Force AI Move", (button_x, button_y_start - 152), (button_width, button_height), self.force_ai_move),
             Button("Reset", (button_x, button_y_start - 190), (button_width, button_height), self.reset_game),
-            Button("<", (button_x, nav_button_y), (30, 28), self.step_back), # Replaces Undo
-            Button(">", (button_x + 35, nav_button_y), (30, 28), self.step_forward),
+            Button("<", (button_x, nav_button_y), (40, 28), self.step_back),
+            Button(">", (button_x + 45, nav_button_y), (40, 28), self.step_forward),
             Button("-", (button_x + (button_width - 70), button_y_start - 263), (30, 28), self.decrease_ai_depth),
             Button("+", (button_x + (button_width - 35), button_y_start - 263), (30, 28), self.increase_ai_depth)
         ]
@@ -85,63 +86,81 @@ class CheckersGame:
         self.feedback_message = ""
         self.feedback_timer = 0
         self.feedback_color = (180, 220, 180)
-        
+
     def _coord_to_acf(self, coord):
         return str(constants.COORD_TO_ACF.get(coord, "??"))
 
     def _format_move_path(self, path):
         if not path or len(path) < 2: return ""
         separator = 'x' if abs(path[0][0] - path[1][0]) == 2 else '-'
-        if separator == 'x':
-            return 'x'.join(self._coord_to_acf(pos) for pos in path)
         return separator.join(self._coord_to_acf(pos) for pos in path)
+
+    def step_back(self):
+        if self.history_index > 0:
+            self.history_index -= 1
+            self.game_is_active = False
+            self.selected_piece = None
+            self._update_game_state_from_history()
+            logger.debug(f"HISTORY: Stepped back to index {self.history_index}")
+
+    def step_forward(self):
+        if self.history_index < len(self.board_history) - 1:
+            self.history_index += 1
+            self._update_game_state_from_history()
+            # If we step forward to the latest move, the game can become active again
+            if self.history_index == len(self.board_history) - 1:
+                self.game_is_active = True
+            logger.debug(f"HISTORY: Stepped forward to index {self.history_index}")
+
+    def _update_game_state_from_history(self):
+        """Updates the main board and turn from the history index."""
+        self.board = self.board_history[self.history_index]
+        self.turn = self.board.turn
+        self.winner = self.board.winner()
+        self.ai_top_moves = []
+        # Update last move for highlighting
+        if self.history_index > 0:
+            last_move_str = self.full_move_history[self.history_index - 1]
+            separator = 'x' if 'x' in last_move_str else '-'
+            parts = [int(p) for p in last_move_str.split(separator)]
+            self.last_move_path = [constants.ACF_TO_COORD.get(p) for p in parts]
+        else:
+            self.last_move_path = None
 
     def start_ai_turn(self, force_color=None):
         self.ai_is_thinking = True
         self.ai_top_moves = []
         self.ai_best_move_for_execution = None
         color_to_move = force_color if force_color else self.turn
-        threading.Thread(target=self.run_ai_calculation, args=(color_to_move,)).start()
+        board_copy = self.board_history[self.history_index]
+        threading.Thread(target=self.run_ai_calculation, args=(board_copy, color_to_move,)).start()
 
-    def run_ai_calculation(self, color_to_move):
+    def run_ai_calculation(self, board_instance, color_to_move):
         try:
             logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
-            board_copy = copy.deepcopy(self.board)
-            best_move, top_moves = get_ai_move_analysis(board_copy, self.ai_depth, color_to_move, evaluate_board)
+            best_move, top_moves = get_ai_move_analysis(board_instance, self.ai_depth, color_to_move, evaluate_board)
             self.ai_move_queue.put({'best': best_move, 'top': top_moves})
             logger.info("AI_THREAD: Calculation finished normally. Move placed in queue.")
         except Exception as e:
             logger.error(f"AI_THREAD: CRITICAL ERROR during calculation: {e}", exc_info=True)
             self.ai_move_queue.put({'best': None, 'top': []})
 
-    def _change_turn(self):
-        self.valid_moves = {}
-        self.selected_piece = None
-        self.turn = WHITE if self.turn == RED else RED
-        self.board.turn = self.turn
-        self.winner = self.board.winner()
-
     def _apply_move_sequence(self, path):
-        # --- MODIFIED: Handle branching history ---
         if not path: return
 
-        # If we are in the past, truncate the future history
         if self.history_index < len(self.board_history) - 1:
             self.board_history = self.board_history[:self.history_index + 1]
             self.full_move_history = self.full_move_history[:self.history_index]
-            logger.info("HISTORY: A new move was made from a past state. Future history has been truncated.")
+            logger.info("HISTORY: New move from past state. Future history truncated.")
 
-        self.last_move_path = path
-        self.full_move_history.append(self._format_move_path(path))
+        current_board = self.board_history[self.history_index]
+        new_board = current_board.apply_move(path)
         
-        # Apply the move to the *current* board state
-        new_board = self.board.apply_move(path)
-        self.board = new_board
         self.board_history.append(new_board)
+        self.full_move_history.append(self._format_move_path(path))
         self.history_index += 1
-        
-        # This function is now only for updating the board object
-        self._change_turn_after_move()
+        self._update_game_state_from_history()
+
     def handle_event(self, event):
         if self.winner: return
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -151,64 +170,64 @@ class CheckersGame:
                     button.callback()
                     clicked_button = True
                     break
-            if not clicked_button: self._handle_click(event.pos)
+            if not clicked_button:
+                row, col = event.pos[1] // SQUARE_SIZE, event.pos[0] // SQUARE_SIZE
+                if self.turn == self.player_color or not self.game_is_active:
+                    current_board = self.board_history[self.history_index]
+                    piece = current_board.get_piece(row, col)
+                    if self.selected_piece and (row, col) in self.valid_moves.get((self.selected_piece.row, self.selected_piece.col), set()):
+                        self._attempt_move((row, col))
+                    elif piece != 0 and piece.color == self.turn:
+                        self._select_piece(row, col)
+                    else:
+                        self.selected_piece = None
+                        self.valid_moves = {}
 
     def update(self):
         if self.winner: return
         
-        if self.feedback_timer > 0:
-            self.feedback_timer -= 1
-        else:
-            self.feedback_message = ""
+        if self.feedback_timer > 0: self.feedback_timer -= 1
+        else: self.feedback_message = ""
 
         try:
             ai_results = self.ai_move_queue.get_nowait()
             self.ai_is_thinking = False
             self.ai_top_moves = ai_results['top']
             self.ai_best_move_for_execution = ai_results['best']
-# ADD THIS BLOCK: Check for and execute a deferred PDN load
             if self.pending_pdn_load:
                 self.wants_to_load_pdn = True
                 self.pending_pdn_load = False
                 logger.debug("AI finished. Executing deferred PDN load request.")
-            
-            if not self.ai_best_move_for_execution:
-                self.winner = self.player_color
-                return
+            if not self.ai_best_move_for_execution: self.winner = self.player_color
         except queue.Empty:
             pass
 
-        if (self.turn == self.ai_color or self.force_ai_flag) and not self.ai_is_thinking and self.ai_best_move_for_execution:
+        if self.game_is_active and (self.turn == self.ai_color or self.force_ai_flag) and not self.ai_is_thinking and self.ai_best_move_for_execution:
             self._apply_move_sequence(self.ai_best_move_for_execution)
             self.ai_best_move_for_execution = None
             self.force_ai_flag = False
-
-        elif self.turn == self.ai_color and not self.ai_is_thinking and not self.ai_best_move_for_execution:
+        elif self.game_is_active and self.turn == self.ai_color and not self.ai_is_thinking and not self.ai_best_move_for_execution:
             self.start_ai_turn()
 
     def draw(self):
         self.screen.fill((40, 40, 40))
-        moves_to_highlight = set()
-        
-# --- MODIFIED: Use the board from history ---
         current_board = self.board_history[self.history_index]
-        if self.selected_piece:
-            moves_to_highlight = current_board.get_all_valid_moves(self.turn).get((self.selected_piece.row, self.selected_piece.col), set())
         
-        current_board.draw(self.screen, self.font, self.show_board_numbers, self.board_flipped, moves_to_highlight, self.last_move_path)
+        # *** BUG FIX: Use the turn from the historical board state ***
+        turn_for_moves = current_board.turn 
+        self.valid_moves = current_board.get_all_valid_moves(turn_for_moves)
+        
+        moves_to_highlight = set()
         if self.selected_piece:
             moves_to_highlight = self.valid_moves.get((self.selected_piece.row, self.selected_piece.col), set())
         
-        self.board.draw(self.screen, self.font, self.show_board_numbers, self.board_flipped, moves_to_highlight, self.last_move_path)
+        current_board.draw(self.screen, self.font, self.show_board_numbers, self.board_flipped, moves_to_highlight, self.last_move_path)
         
         self.draw_side_panel()
-        if self.dev_mode:
-            self.draw_dev_panel()
+        if self.dev_mode: self.draw_dev_panel()
         if self.winner is not None:
-            if self.winner == self.player_color:
-                text, color = "You Win!", (100, 255, 100)
-            else:
-                text, color = "AI Wins!", (255, 100, 100)
+            text = "You Win!" if self.winner == self.player_color else "AI Wins!"
+            color = (100, 255, 100) if self.winner == self.player_color else (255, 100, 100)
             winner_surface = self.winner_font.render(text, True, color)
             self.screen.blit(winner_surface, (BOARD_SIZE // 2 - winner_surface.get_width() // 2, BOARD_SIZE // 2 - winner_surface.get_height() // 2))
 
@@ -218,9 +237,11 @@ class CheckersGame:
         panel_rect = pygame.Rect(panel_x, 0, panel_width, self.screen.get_height())
         pygame.draw.rect(self.screen, (20, 20, 20), panel_rect)
         pygame.draw.line(self.screen, (100, 100, 100), (panel_x, 0), (panel_x, self.screen.get_height()), 2)
-        for button in self.buttons:
-            button.draw(self.screen)
+        for button in self.buttons: button.draw(self.screen)
+        
         turn_text_str = "White's Turn" if self.turn == WHITE else "Red's Turn"
+        if not self.game_is_active: turn_text_str = f"Analysis: Mv {self.history_index}"
+        
         turn_surface = self.large_font.render(turn_text_str, True, (255, 255, 255))
         self.screen.blit(turn_surface, (panel_x + 10, 15))
 
@@ -238,47 +259,36 @@ class CheckersGame:
         y_offset = history_y_start + 30
         
         num_moves_to_show = 20
-        start_index = max(0, len(self.move_history) - num_moves_to_show)
-        if start_index % 2 != 0: start_index -= 1
-        display_history = self.move_history[start_index:]
+        start_index = max(0, len(self.full_move_history) - num_moves_to_show)
+        display_history = self.full_move_history[start_index:]
         
-        moves_per_column = (num_moves_to_show // 2) 
-        if (num_moves_to_show % 2) > 0: moves_per_column +=1
-
-        col1_x = panel_x + 15
-        col2_x = panel_x + (panel_width // 2)
+        moves_per_column = (num_moves_to_show + 1) // 2
+        col1_x, col2_x = panel_x + 15, panel_x + (panel_width // 2)
         line_height = 18
 
         for i in range(moves_per_column):
-            # First column
-            idx1 = i
-            if idx1 < len(display_history):
-                move_num1 = (start_index + idx1) // 2 + 1
-                player_move = display_history[idx1]
-                line1 = f"{move_num1}. {player_move}"
-                move_surface1 = self.history_font.render(line1, True, (220, 220, 220))
-                self.screen.blit(move_surface1, (col1_x, y_offset + i * line_height))
+            for col_num, base_idx in enumerate([i, i + moves_per_column]):
+                if base_idx < len(display_history):
+                    move_num = start_index + base_idx
+                    player_move = display_history[base_idx]
+                    line = f"{(move_num // 2) + 1}{'.' if move_num % 2 == 0 else '...'} {player_move}"
+                    
+                    is_current_move = move_num == self.history_index -1
+                    color = (255, 255, 0) if is_current_move else (220, 220, 220)
+                    
+                    move_surface = self.history_font.render(line, True, color)
+                    x_pos = col1_x if col_num == 0 else col2_x
+                    self.screen.blit(move_surface, (x_pos, y_offset + i * line_height))
 
-            # Second column
-            idx2 = i + moves_per_column
-            if idx2 < len(display_history):
-                move_num2 = (start_index + idx2) // 2 + 1
-                player_move = display_history[idx2]
-                line2 = f"{move_num2}. {player_move}"
-                move_surface2 = self.history_font.render(line2, True, (220, 220, 220))
-                self.screen.blit(move_surface2, (col2_x, y_offset + i * line_height))
-        
         depth_button = self.buttons[-2]
         depth_text_surface = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
         text_y = depth_button.rect.centery - (depth_text_surface.get_height() // 2)
         self.screen.blit(depth_text_surface, (panel_x + 10, text_y))
-        display_history = self.full_move_history[start_index:]
 
     def draw_dev_panel(self):
         panel_height = self.screen.get_height() - BOARD_SIZE
         if panel_height <= 0: return
-        panel_y = BOARD_SIZE
-        panel_rect = pygame.Rect(0, panel_y, BOARD_SIZE, panel_height)
+        panel_y, panel_rect = BOARD_SIZE, pygame.Rect(0, BOARD_SIZE, BOARD_SIZE, panel_height)
         pygame.draw.rect(self.screen, (30, 30, 30), panel_rect)
         pygame.draw.line(self.screen, (100, 100, 100), (0, panel_y), (BOARD_SIZE, panel_y), 2)
         if not self.ai_top_moves: return
@@ -289,10 +299,7 @@ class CheckersGame:
         line_height = 18
         for i, (score, sequence) in enumerate(self.ai_top_moves):
             if not sequence: continue
-            move_text = f"{i+1}. "
-            for move_segment in sequence:
-                segment_str = self._format_move_path(move_segment)
-                move_text += f"({segment_str}) "
+            move_text = f"{i+1}. " + " ".join(f"({self._format_move_path(seg)})" for seg in sequence)
             score_text = f"Score: {score:.2f}"
             full_text = f"{move_text} {score_text}"
             text_surface = self.dev_font.render(full_text, True, (220, 220, 220))
@@ -308,35 +315,22 @@ class CheckersGame:
     
     def force_ai_move(self):
         if not self.ai_is_thinking:
+            self.game_is_active = True
             self.force_ai_flag = True
             self.start_ai_turn(self.turn)
 
     def reset_game(self):
+        """Resets the game to its initial state."""
         self.board = Board(db_conn=self.db_conn)
         self.turn = self.board.turn
-        self.move_history = []
-        self.ai_top_moves = []
         self.selected_piece = None
         self.winner = None
         self.last_move_path = None
-            
-# --- NEW: History Navigation Functions ---
-    def step_back(self):
-        if self.history_index > 0:
-            self.history_index -= 1
-            self.board = self.board_history[self.history_index]
-            self.turn = self.board.turn
-            self.game_is_active = False # Enter analysis mode when stepping back
-            self.ai_top_moves = [] # Clear analysis
-            self.last_move_path = None # Clear move highlight
-            logger.debug(f"HISTORY: Stepped back to index {self.history_index}")
-
-    def step_forward(self):
-        if self.history_index < len(self.board_history) - 1:
-            self.history_index += 1
-            self.board = self.board_history[self.history_index]
-            self.turn = self.board.turn
-            logger.debug(f"HISTORY: Stepped forward to index {self.history_index}")
+        self.ai_top_moves = []
+        self.game_is_active = True
+        self.full_move_history = []
+        self.board_history = [copy.deepcopy(self.board)]
+        self.history_index = 0
 
     def export_to_pdn(self):
         try:
@@ -348,92 +342,62 @@ class CheckersGame:
                 f.write(f'[Black "{"Player" if self.player_color == RED else "AI"}"]\n')
                 f.write('[Result "*"]\n\n')
                 move_str = ""
-                for i, move in enumerate(self.move_history):
+                for i, move in enumerate(self.full_move_history):
                     if i % 2 == 0: move_str += f"{i//2 + 1}. {move} "
                     else: move_str += f"{move} "
                 f.write(move_str.strip() + " *\n")
             self.feedback_message = f"Saved to {filename}"
-            self.feedback_timer = 180
-            self.feedback_color = (180, 220, 180)
+            self.feedback_timer, self.feedback_color = 180, (180, 220, 180)
         except Exception as e:
             self.feedback_message = "Error saving PDN!"
-            self.feedback_timer = 180
-            self.feedback_color = (220, 180, 180)
+            self.feedback_timer, self.feedback_color = 180, (220, 180, 180)
     
     def load_pdn_from_file(self, filepath):
-        """
-        Loads and parses a PDN file provided by the main loop.
-        Includes detailed debugging logs.
-        """
-        logger.info(f"PDN_LOAD: Received filepath from main loop: {filepath}")
+        logger.info(f"PDN_LOAD: Received filepath: {filepath}")
         try:
-            with open(filepath, 'r') as f:
-                pdn_text = f.read()
-            
-            logger.debug("PDN_LOAD: Successfully read file content.")
+            with open(filepath, 'r') as f: pdn_text = f.read()
             movetext_match = re.search(r'1\..*?(?=\[|$)', pdn_text, re.DOTALL)
-            if not movetext_match:
-                raise ValueError("No valid movetext found in PDN file.")
-
+            if not movetext_match: raise ValueError("No valid movetext found in PDN file.")
+            
             movetext = movetext_match.group(0)
             moves_only = re.sub(r'\{.*?\}|\d+\.|\*', '', movetext).split()
-            logger.debug(f"PDN_LOAD: Found {len(moves_only)} moves to parse: {moves_only}")
-
-            self.reset_game()
-            logger.debug("PDN_LOAD: Board has been reset to starting position.")
+            
+            temp_board = Board(db_conn=self.db_conn)
+            new_board_history = [copy.deepcopy(temp_board)]
+            new_move_history = []
             
             for i, move_str in enumerate(moves_only):
-                logger.debug(f"PDN_LOAD: Parsing move {i+1}: '{move_str}'")
                 separator = 'x' if 'x' in move_str else '-'
                 parts = [int(p) for p in move_str.split(separator)]
-                
-                path_to_apply = []
-                for j in range(len(parts) - 1):
-                    start_coord = constants.ACF_TO_COORD.get(parts[j])
-                    end_coord = constants.ACF_TO_COORD.get(parts[j+1])
-                    if start_coord and end_coord:
-                        if j == 0: path_to_apply.append(start_coord)
-                        path_to_apply.append(end_coord)
-                
-                if not path_to_apply:
+                path_to_apply = [constants.ACF_TO_COORD.get(p) for p in parts]
+                if None in path_to_apply:
                     logger.warning(f"PDN_LOAD: Could not parse move '{move_str}'. Skipping.")
                     continue
                 
-               # self._apply_move_sequence(path_to_apply)
-    # Apply move and store the new state
                 temp_board = temp_board.apply_move(path_to_apply)
-                self.board_history.append(temp_board)
-                self.full_move_history.append(move_str)
-                logger.debug(f"PDN_LOAD: Processed move {i+1}. Board states in history: {len(self.board_history)}")
-
-            # Set the game to the final board state
-            self.history_index = len(self.board_history) - 1
-            self.board = self.board_history[self.history_index]
-            self._change_turn_after_move()
-
-            self.game_is_active = False # Pause the game for analysis
-            logger.debug(f"PDN_LOAD: Successfully applied move {i+1}.")
+                new_board_history.append(temp_board)
+                new_move_history.append(move_str)
             
+            self.board_history = new_board_history
+            self.full_move_history = new_move_history
+            self.history_index = len(self.board_history) - 1
+            self._update_game_state_from_history()
+            
+            self.game_is_active, self.ai_top_moves = False, []
             self.feedback_message = f"Loaded {os.path.basename(filepath)}"
-            self.feedback_timer = 180
-            self.feedback_color = (180, 220, 180)
-            logger.info(f"Successfully loaded game state from {filepath}")
-
+            self.feedback_timer, self.feedback_color = 180, (180, 220, 180)
+            logger.info(f"Successfully loaded game from {filepath}. Game is now in analysis mode.")
         except Exception as e:
             self.feedback_message = "Error loading PDN!"
-            self.feedback_timer = 180
-            self.feedback_color = (220, 180, 180)
+            self.feedback_timer, self.feedback_color = 180, (220, 180, 180)
             logger.error(f"Failed to load PDN file '{filepath}': {e}", exc_info=True)
 
     def _select_piece(self, row, col):
-        piece = self.board.get_piece(row, col)
+        current_board = self.board_history[self.history_index]
+        piece = current_board.get_piece(row, col)
         if piece != 0 and piece.color == self.turn:
             self.selected_piece = piece
-            self.valid_moves = self.board.get_all_valid_moves(self.turn)
-            # --- FIX 4: Use ACF format in log message ---
-            log_moves = self.valid_moves.get((row, col), 'None')
-            if isinstance(log_moves, set):
-                log_moves = {self._coord_to_acf(m) for m in log_moves}
+            log_moves = {self._coord_to_acf(m) for m in self.valid_moves.get((row, col), set())}
             logger.debug(f"Piece selected at {self._coord_to_acf((row, col))}. Valid destinations: {log_moves}")
             return True
         self.selected_piece, self.valid_moves = None, {}
@@ -441,40 +405,29 @@ class CheckersGame:
 
     def _attempt_move(self, move_end_pos):
         if not self.selected_piece: return False
-        start_pos = (self.selected_piece.row, self.selected_piece.col)
-        valid_destinations = self.valid_moves.get(start_pos, set())
         
-        if move_end_pos in valid_destinations:
-            all_possible_sequences = list(get_all_move_sequences(self.board, self.turn))
-            found_path = next((path for path in all_possible_sequences if path[0] == start_pos and path[-1] == move_end_pos), None)
-            
-            if found_path:
-                # --- FIX 4: Use ACF format in log message ---
-                logger.info(f"Player move validated. Applying sequence: {self._format_move_path(found_path)}")
-                self._apply_move_sequence(found_path)
-                return True
-        # --- FIX 4: Use ACF format in log message ---
+        current_board = self.board_history[self.history_index]
+        start_pos = (self.selected_piece.row, self.selected_piece.col)
+        
+        all_possible_sequences = list(get_all_move_sequences(current_board, self.turn))
+        found_path = next((path for path in all_possible_sequences if path[0] == start_pos and path[-1] == move_end_pos), None)
+        
+        if found_path:
+            logger.info(f"Player move validated. Applying sequence: {self._format_move_path(found_path)}")
+            self.game_is_active = True
+            self._apply_move_sequence(found_path)
+            return True
+
         logger.warning(f"Invalid move attempted from {self._coord_to_acf(start_pos)} to {self._coord_to_acf(move_end_pos)}. Clearing selection.")
         self.selected_piece, self.valid_moves = None, {}
         return False
         
     def request_pdn_load(self):
-        """Sets a flag to tell the main loop to open the file dialog."""
-        logger.debug("PDN_LOAD: Button clicked. Requesting file dialog from main loop.")
-        # MODIFY this function with the new logic
+        logger.debug("PDN_LOAD: Button clicked.")
         if self.ai_is_thinking:
             self.pending_pdn_load = True
-            self.feedback_message = "Will load after AI moves..."
-            self.feedback_timer = 120 # Show message for 2 seconds
-            self.feedback_color = (255, 255, 0) # Yellow
+            self.feedback_message, self.feedback_timer, self.feedback_color = "Will load after AI moves...", 120, (255, 255, 0)
             logger.debug("PDN_LOAD: AI is thinking. Deferring request.")
         else:
             logger.debug("PDN_LOAD: Requesting file dialog from main loop.")
             self.wants_to_load_pdn = True
-            
-    def _change_turn_after_move(self):
-        """Helper to update turn state without changing history."""
-        self.valid_moves = {}
-        self.selected_piece = None
-        self.turn = self.board.turn
-        self.winner = self.board.winner()
