@@ -49,6 +49,13 @@ class CheckersGame:
         self.winner = None
         self.last_move_path = None
         self.wants_to_load_pdn = False
+        self.pending_pdn_load = False
+        self.game_is_active = True
+        
+        # --- NEW: History Navigation ---
+        self.full_move_history = [] # Stores PDN move strings
+        self.board_history = [copy.deepcopy(self.board)] # Stores board objects
+        self.history_index = 0
 
         # --- FIX: Buttons centered in the new, narrower side panel ---
         button_width = 171
@@ -56,6 +63,7 @@ class CheckersGame:
         side_panel_width = self.screen.get_width() - BOARD_SIZE
         button_x = BOARD_SIZE + (side_panel_width - button_width) // 2
         button_y_start = self.screen.get_height() - 38
+        nav_button_y = button_y_start - 228
         self.buttons = [
             Button("Dev Mode", (button_x, button_y_start), (button_width, button_height), self.toggle_dev_mode),
             Button("Board Numbers", (button_x, button_y_start - 38), (button_width, button_height), self.toggle_board_numbers),
@@ -63,7 +71,8 @@ class CheckersGame:
             Button("Export to PDN", (button_x, button_y_start - 114), (button_width, button_height), self.export_to_pdn),
             Button("Force AI Move", (button_x, button_y_start - 152), (button_width, button_height), self.force_ai_move),
             Button("Reset", (button_x, button_y_start - 190), (button_width, button_height), self.reset_game),
-            Button("Undo", (button_x, button_y_start - 228), (button_width, button_height), self.undo_move),
+            Button("<", (button_x, nav_button_y), (30, 28), self.step_back), # Replaces Undo
+            Button(">", (button_x + 35, nav_button_y), (30, 28), self.step_forward),
             Button("-", (button_x + (button_width - 70), button_y_start - 263), (30, 28), self.decrease_ai_depth),
             Button("+", (button_x + (button_width - 35), button_y_start - 263), (30, 28), self.increase_ai_depth)
         ]
@@ -113,26 +122,26 @@ class CheckersGame:
         self.winner = self.board.winner()
 
     def _apply_move_sequence(self, path):
+        # --- MODIFIED: Handle branching history ---
         if not path: return
+
+        # If we are in the past, truncate the future history
+        if self.history_index < len(self.board_history) - 1:
+            self.board_history = self.board_history[:self.history_index + 1]
+            self.full_move_history = self.full_move_history[:self.history_index]
+            logger.info("HISTORY: A new move was made from a past state. Future history has been truncated.")
+
         self.last_move_path = path
-        self.move_history.append(self._format_move_path(path))
-        start_pos, end_pos = path[0], path[-1]
-        piece = self.board.get_piece(start_pos[0], start_pos[1])
-        if piece == 0: return
-
-        is_jump = any(abs(path[i][0] - path[i+1][0]) == 2 for i in range(len(path)-1))
-        if is_jump:
-            captured_pieces = []
-            for i in range(len(path)-1):
-                p_start, p_end = path[i], path[i+1]
-                mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
-                captured = self.board.get_piece(mid_row, mid_col)
-                if captured: captured_pieces.append(captured)
-            self.board._remove(captured_pieces)
+        self.full_move_history.append(self._format_move_path(path))
         
-        self.board.move(piece, end_pos[0], end_pos[1])
-        self._change_turn()
-
+        # Apply the move to the *current* board state
+        new_board = self.board.apply_move(path)
+        self.board = new_board
+        self.board_history.append(new_board)
+        self.history_index += 1
+        
+        # This function is now only for updating the board object
+        self._change_turn_after_move()
     def handle_event(self, event):
         if self.winner: return
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -157,6 +166,12 @@ class CheckersGame:
             self.ai_is_thinking = False
             self.ai_top_moves = ai_results['top']
             self.ai_best_move_for_execution = ai_results['best']
+# ADD THIS BLOCK: Check for and execute a deferred PDN load
+            if self.pending_pdn_load:
+                self.wants_to_load_pdn = True
+                self.pending_pdn_load = False
+                logger.debug("AI finished. Executing deferred PDN load request.")
+            
             if not self.ai_best_move_for_execution:
                 self.winner = self.player_color
                 return
@@ -174,6 +189,13 @@ class CheckersGame:
     def draw(self):
         self.screen.fill((40, 40, 40))
         moves_to_highlight = set()
+        
+# --- MODIFIED: Use the board from history ---
+        current_board = self.board_history[self.history_index]
+        if self.selected_piece:
+            moves_to_highlight = current_board.get_all_valid_moves(self.turn).get((self.selected_piece.row, self.selected_piece.col), set())
+        
+        current_board.draw(self.screen, self.font, self.show_board_numbers, self.board_flipped, moves_to_highlight, self.last_move_path)
         if self.selected_piece:
             moves_to_highlight = self.valid_moves.get((self.selected_piece.row, self.selected_piece.col), set())
         
@@ -250,6 +272,7 @@ class CheckersGame:
         depth_text_surface = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
         text_y = depth_button.rect.centery - (depth_text_surface.get_height() // 2)
         self.screen.blit(depth_text_surface, (panel_x + 10, text_y))
+        display_history = self.full_move_history[start_index:]
 
     def draw_dev_panel(self):
         panel_height = self.screen.get_height() - BOARD_SIZE
@@ -296,20 +319,24 @@ class CheckersGame:
         self.selected_piece = None
         self.winner = None
         self.last_move_path = None
+            
+# --- NEW: History Navigation Functions ---
+    def step_back(self):
+        if self.history_index > 0:
+            self.history_index -= 1
+            self.board = self.board_history[self.history_index]
+            self.turn = self.board.turn
+            self.game_is_active = False # Enter analysis mode when stepping back
+            self.ai_top_moves = [] # Clear analysis
+            self.last_move_path = None # Clear move highlight
+            logger.debug(f"HISTORY: Stepped back to index {self.history_index}")
 
-    def undo_move(self):
-        if len(self.board.history) > 1:
-            self.board.history.pop()
-            last_board_state = self.board.history[-1]
-            self.board.board = copy.deepcopy(last_board_state)
-            self.board.recalculate_pieces()
-            if self.move_history: self.move_history.pop()
-            self._change_turn()
-            self.ai_is_thinking = False
-            self.ai_top_moves = []
-            self.ai_best_move_for_execution = None
-            self.winner = None
-            self.last_move_path = None
+    def step_forward(self):
+        if self.history_index < len(self.board_history) - 1:
+            self.history_index += 1
+            self.board = self.board_history[self.history_index]
+            self.turn = self.board.turn
+            logger.debug(f"HISTORY: Stepped forward to index {self.history_index}")
 
     def export_to_pdn(self):
         try:
@@ -372,8 +399,20 @@ class CheckersGame:
                     logger.warning(f"PDN_LOAD: Could not parse move '{move_str}'. Skipping.")
                     continue
                 
-                self._apply_move_sequence(path_to_apply)
-                logger.debug(f"PDN_LOAD: Successfully applied move {i+1}.")
+               # self._apply_move_sequence(path_to_apply)
+    # Apply move and store the new state
+                temp_board = temp_board.apply_move(path_to_apply)
+                self.board_history.append(temp_board)
+                self.full_move_history.append(move_str)
+                logger.debug(f"PDN_LOAD: Processed move {i+1}. Board states in history: {len(self.board_history)}")
+
+            # Set the game to the final board state
+            self.history_index = len(self.board_history) - 1
+            self.board = self.board_history[self.history_index]
+            self._change_turn_after_move()
+
+            self.game_is_active = False # Pause the game for analysis
+            logger.debug(f"PDN_LOAD: Successfully applied move {i+1}.")
             
             self.feedback_message = f"Loaded {os.path.basename(filepath)}"
             self.feedback_timer = 180
@@ -422,4 +461,20 @@ class CheckersGame:
     def request_pdn_load(self):
         """Sets a flag to tell the main loop to open the file dialog."""
         logger.debug("PDN_LOAD: Button clicked. Requesting file dialog from main loop.")
-        self.wants_to_load_pdn = True
+        # MODIFY this function with the new logic
+        if self.ai_is_thinking:
+            self.pending_pdn_load = True
+            self.feedback_message = "Will load after AI moves..."
+            self.feedback_timer = 120 # Show message for 2 seconds
+            self.feedback_color = (255, 255, 0) # Yellow
+            logger.debug("PDN_LOAD: AI is thinking. Deferring request.")
+        else:
+            logger.debug("PDN_LOAD: Requesting file dialog from main loop.")
+            self.wants_to_load_pdn = True
+            
+    def _change_turn_after_move(self):
+        """Helper to update turn state without changing history."""
+        self.valid_moves = {}
+        self.selected_piece = None
+        self.turn = self.board.turn
+        self.winner = self.board.winner()

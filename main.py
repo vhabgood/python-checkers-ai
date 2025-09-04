@@ -21,7 +21,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)-12s - %(levelname)-8s - %(message)s',
     filename=log_filepath,
     filemode='w',
-    force=True 
+    force=True
 )
 logger = logging.getLogger(__name__)
 logger.info(f"Logging initialized. All output will be sent to: {log_filepath}")
@@ -44,6 +44,7 @@ class App:
         self.clock = pygame.time.Clock()
         self.args = args
         self.done = False
+
         self.status_queue = queue.Queue()
         self.states = {
             "player_selection": PlayerSelectionScreen(self.screen),
@@ -66,7 +67,8 @@ class App:
         if self.state.done:
             next_state_name = self.state.next_state
             if next_state_name == "loading":
-                player_color = "white" if self.state.player_choice == (255,255,255) else "red"
+                # Correctly get the player_choice string from the selection screen
+                player_color = self.states["player_selection"].player_choice
                 self.state = self.states["loading"]
                 self.state.reset()
                 self.loading_thread = threading.Thread(target=self.load_game, args=(player_color,), daemon=True)
@@ -78,43 +80,43 @@ class App:
                     logger.error("Attempted to transition to game state, but game object is not ready.")
             elif next_state_name is None:
                 self.done = True
-# main.py
 
     def main_loop(self):
         """The main loop of the application."""
         while not self.done:
             events = pygame.event.get()
-            
+
             # Handle PDN loading request from the main thread
             if hasattr(self.state, 'wants_to_load_pdn') and self.state.wants_to_load_pdn:
-                # --- NEW DEBUG LOG 1 ---
+                # --- DEBUG LOG 1 ---
                 logger.debug("MAIN_LOOP: PDN load requested. Creating temporary Tkinter root.")
                 root = tk.Tk()
                 root.withdraw() # Hide the main Tkinter window
 
-                # --- NEW DEBUG LOG 2 ---
+                # --- DEBUG LOG 2 ---
                 logger.debug("MAIN_LOOP: Tkinter root created. Opening file dialog now.")
                 filepath = filedialog.askopenfilename(
                     title="Select a PDN file",
                     filetypes=(("PDN files", "*.pdn"), ("All files", "*.*"))
                 )
-                # --- NEW DEBUG LOG 3 ---
+                # --- DEBUG LOG 3 ---
                 logger.debug(f"MAIN_LOOP: File dialog closed. Filepath selected: '{filepath}'")
 
                 root.destroy()
-                # --- NEW DEBUG LOG 4 ---
+                # --- DEBUG LOG 4 ---
                 logger.debug("MAIN_LOOP: Tkinter root destroyed.")
 
                 if filepath:
                     logger.info(f"MAIN_LOOP: Valid filepath received. Passing to game state for loading.")
                     self.state.load_pdn_from_file(filepath)
-                
+
                 self.state.wants_to_load_pdn = False
+
 
             for event in events:
                 if event.type == pygame.QUIT:
                     self.done = True
-            
+
             # Unified event handling
             if hasattr(self.state, 'handle_events'):
                 self.state.handle_events(events, self)
@@ -128,49 +130,7 @@ class App:
                 self.state.draw()
 
             self.transition_state()
-            
-            pygame.display.update()
-            self.clock.tick(60)
 
-        pygame.quit()
-        sys.exit()
-###WASWORKING"""    def main_loop(self):
-        '''The main loop of the application."""
-        while not self.done:
-            events = pygame.event.get()     
-# Handle PDN loading request from the main thread
-            if hasattr(self.state, 'wants_to_load_pdn') and self.state.wants_to_load_pdn:
-                # CREATE and DESTROY the Tkinter root window locally
-                root = tk.Tk()
-                root.withdraw() # Hide the main Tkinter window
-                filepath = filedialog.askopenfilename(
-                    title="Select a PDN file",
-                    filetypes=(("PDN files", "*.pdn"), ("All files", "*.*"))
-                )
-                root.destroy() # IMPORTANT: destroy the root window
-                
-                if filepath:
-                    self.state.load_pdn_from_file(filepath)
-                self.state.wants_to_load_pdn = False
-
-            for event in events:
-                if event.type == pygame.QUIT:
-                    self.done = True
-            
-            # Unified event handling
-            if hasattr(self.state, 'handle_events'):
-                self.state.handle_events(events, self)
-            elif hasattr(self.state, 'handle_event'):
-                for event in events:
-                    self.state.handle_event(event)
-
-            # Update and draw current state
-            if self.state:
-                self.state.update()
-                self.state.draw()
-
-            self.transition_state()
-            
             pygame.display.update()
             self.clock.tick(60)
 
@@ -180,4 +140,4 @@ class App:
 if __name__ == '__main__':
     args = parse_arguments()
     app = App(args)
-    app.main_loop() '''
+    app.main_loop()
