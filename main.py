@@ -9,6 +9,8 @@ import argparse
 from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog
+import multiprocessing as mp
+
 from engine.constants import SCREEN_WIDTH, SCREEN_HEIGHT
 SCREEN_SIZE=(SCREEN_WIDTH,SCREEN_HEIGHT)
 # --- Logging Configuration ---
@@ -25,6 +27,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logger.info(f"Logging initialized. All output will be sent to: {log_filepath}")
+
+# --- NEW: Function to run the dialog in a separate process ---
+def open_file_dialog_process(conn):
+    """
+    This function runs in a separate process. It opens the file dialog
+    and sends the selected path back to the main process via a pipe.
+    """
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        filepath = filedialog.askopenfilename(
+            title="Select a PDN file",
+            filetypes=(("PDN files", "*.pdn"), ("All files", "*.*"))
+        )
+        conn.send(filepath)
+    except Exception as e:
+        # Send back an error or None if something goes wrong
+        conn.send(None)
+    finally:
+        conn.close()
 
 def parse_arguments():
     """Parses command-line arguments."""
@@ -54,6 +76,11 @@ class App:
         self.state = self.states["player_selection"]
         self.loading_thread = None
 
+        # --- NEW: State for managing the dialog process ---
+        self.dialog_process = None
+        self.dialog_pipe_parent_conn = None
+        self.is_waiting_for_dialog = False
+
     def load_game(self, player_color_str):
         """Initializes the game state and connects to the SQLite database."""
         try:
@@ -67,70 +94,59 @@ class App:
         if self.state.done:
             next_state_name = self.state.next_state
             if next_state_name == "loading":
-                # Correctly get the player_choice string from the selection screen
                 player_color = self.states["player_selection"].player_choice
                 self.state = self.states["loading"]
                 self.state.reset()
                 self.loading_thread = threading.Thread(target=self.load_game, args=(player_color,), daemon=True)
                 self.loading_thread.start()
             elif next_state_name == "game":
-                if self.states["game"]:
-                    self.state = self.states["game"]
-                else:
-                    logger.error("Attempted to transition to game state, but game object is not ready.")
-            elif next_state_name is None:
-                self.done = True
+                if self.states["game"]: self.state = self.states["game"]
+                else: logger.error("Attempted to transition to game state, but game object is not ready.")
+            elif next_state_name is None: self.done = True
 
     def main_loop(self):
         """The main loop of the application."""
         while not self.done:
-            events = pygame.event.get()
-
-            # Handle PDN loading request from the main thread
-            if hasattr(self.state, 'wants_to_load_pdn') and self.state.wants_to_load_pdn:
-                # --- DEBUG LOG 1 ---
-                logger.debug("MAIN_LOOP: PDN load requested. Creating temporary Tkinter root.")
-                root = tk.Tk()
-                root.withdraw() # Hide the main Tkinter window
-
-                # --- DEBUG LOG 2 ---
-                logger.debug("MAIN_LOOP: Tkinter root created. Opening file dialog now.")
-                filepath = filedialog.askopenfilename(
-                    title="Select a PDN file",
-                    filetypes=(("PDN files", "*.pdn"), ("All files", "*.*"))
-                )
-                # --- DEBUG LOG 3 ---
-                logger.debug(f"MAIN_LOOP: File dialog closed. Filepath selected: '{filepath}'")
-
-                root.destroy()
-                # --- DEBUG LOG 4 ---
-                logger.debug("MAIN_LOOP: Tkinter root destroyed.")
-
-                if filepath:
-                    logger.info(f"MAIN_LOOP: Valid filepath received. Passing to game state for loading.")
-                    self.state.load_pdn_from_file(filepath)
-
+            # --- MODIFIED: Handle PDN loading with a separate process ---
+            if hasattr(self.state, 'wants_to_load_pdn') and self.state.wants_to_load_pdn and not self.is_waiting_for_dialog:
                 self.state.wants_to_load_pdn = False
+                logger.info("MAIN_LOOP: Starting file dialog process.")
+                self.dialog_pipe_parent_conn, child_conn = mp.Pipe()
+                self.dialog_process = mp.Process(target=open_file_dialog_process, args=(child_conn,))
+                self.dialog_process.start()
+                self.is_waiting_for_dialog = True
 
+            # --- NEW: Non-blocking check for the dialog result ---
+            if self.is_waiting_for_dialog:
+                if self.dialog_pipe_parent_conn.poll():
+                    filepath = self.dialog_pipe_parent_conn.recv()
+                    logger.info(f"MAIN_LOOP: Received '{filepath}' from dialog process.")
+                    if filepath:
+                        self.state.load_pdn_from_file(filepath)
+                    
+                    # Clean up the process
+                    self.dialog_process.join()
+                    self.dialog_pipe_parent_conn.close()
+                    self.is_waiting_for_dialog = False
+                    self.dialog_process = None
+                    self.dialog_pipe_parent_conn = None
 
+            events = pygame.event.get()
             for event in events:
-                if event.type == pygame.QUIT:
-                    self.done = True
+                if event.type == pygame.QUIT: self.done = True
+            
+            # Prevent handling game events while dialog is (supposedly) open
+            if not self.is_waiting_for_dialog:
+                if hasattr(self.state, 'handle_events'): self.state.handle_events(events, self)
+                elif hasattr(self.state, 'handle_event'):
+                    for event in events: self.state.handle_event(event)
 
-            # Unified event handling
-            if hasattr(self.state, 'handle_events'):
-                self.state.handle_events(events, self)
-            elif hasattr(self.state, 'handle_event'):
-                for event in events:
-                    self.state.handle_event(event)
-
-            # Update and draw current state
             if self.state:
                 self.state.update()
                 self.state.draw()
 
             self.transition_state()
-
+            
             pygame.display.update()
             self.clock.tick(60)
 
@@ -138,6 +154,14 @@ class App:
         sys.exit()
 
 if __name__ == '__main__':
+    # Required for multiprocessing on some platforms
+    mp.freeze_support()
+    # It's safer to use 'fork' on Linux if available
+    try:
+        mp.set_start_method('fork')
+    except RuntimeError:
+        pass
+    
     args = parse_arguments()
     app = App(args)
     app.main_loop()

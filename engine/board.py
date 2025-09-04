@@ -7,7 +7,6 @@ import os
 import pickle
 from .constants import BLACK, ROWS, COLS, SQUARE_SIZE, RED, WHITE, COORD_TO_ACF
 from .piece import Piece
-from engine.search import get_all_move_sequences
 
 logger = logging.getLogger('board')
 
@@ -21,16 +20,58 @@ class Board:
         self.create_board()
         self.zobrist_table = self._init_zobrist()
         self.hash = self._compute_hash()
-        self.history = [copy.deepcopy(self.board)]
 
     def __deepcopy__(self, memo):
         new_board = Board(db_conn=None)
         memo[id(self)] = new_board
         for k, v in self.__dict__.items():
-            if k != 'db_conn':
+            if k not in ['db_conn', 'zobrist_table']:
                 setattr(new_board, k, copy.deepcopy(v, memo))
         new_board.db_conn = self.db_conn
+        new_board.zobrist_table = self.zobrist_table
         return new_board
+
+    # --- MOVE GENERATION LOGIC IS NOW PART OF THE BOARD CLASS ---
+    def get_all_move_sequences(self, color):
+        all_paths = []
+        forced_jumps_found = False
+        for piece in self.get_all_pieces(color):
+            jumps = self._get_moves_for_piece(piece, find_jumps=True)
+            if jumps:
+                forced_jumps_found = True
+                start_pos = (piece.row, piece.col)
+                for end_pos in jumps:
+                    initial_path = [start_pos, end_pos]
+                    all_paths.extend(self._find_all_paths_from(initial_path))
+        
+        if forced_jumps_found:
+            for path in all_paths: yield path
+            return
+
+        for piece in self.get_all_pieces(color):
+            slides = self._get_moves_for_piece(piece, find_jumps=False)
+            if slides:
+                start_pos = (piece.row, piece.col)
+                for end_pos in slides: yield [start_pos, end_pos]
+
+    def _find_all_paths_from(self, current_path):
+        paths = []
+        temp_board = self.apply_move(current_path)
+        last_pos = current_path[-1]
+        
+        # The piece has moved, so we need to find it on the new board
+        moved_piece = temp_board.get_piece(last_pos[0], last_pos[1])
+        if moved_piece == 0: return [current_path]
+
+        more_jumps = temp_board._get_moves_for_piece(moved_piece, find_jumps=True)
+
+        if not more_jumps:
+            paths.append(current_path)
+        else:
+            for next_pos in more_jumps:
+                new_path = current_path + [next_pos]
+                paths.extend(temp_board._find_all_paths_from(new_path))
+        return paths
 
     def _get_endgame_key(self):
         """
@@ -89,6 +130,7 @@ class Board:
         start_pos = path[0]
         piece_to_move = temp_board.get_piece(start_pos[0], start_pos[1])
         if piece_to_move == 0: return temp_board
+        
         captured_pieces = []
         for i in range(len(path) - 1):
             p_start, p_end = path[i], path[i+1]
@@ -96,11 +138,13 @@ class Board:
                 mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
                 captured = temp_board.get_piece(mid_row, mid_col)
                 if captured: captured_pieces.append(captured)
+        
         if captured_pieces: temp_board._remove(captured_pieces)
+        
         final_pos = path[-1]
         temp_board.move(piece_to_move, final_pos[0], final_pos[1])
-        temp_board.turn = WHITE if temp_board.turn == RED else RED
-        temp_board.hash ^= temp_board.zobrist_table['turn']
+        temp_board.turn = WHITE if self.turn == RED else RED
+        temp_board.hash ^= self.zobrist_table['turn']
         return temp_board
 
     def _init_zobrist(self):
@@ -156,7 +200,6 @@ class Board:
             else: self.red_kings += 1
         new_key = (row, col, piece.color, piece.king)
         self.hash ^= self.zobrist_table[new_key]
-        self.history.append(copy.deepcopy(self.board))
 
     def _remove(self, pieces):
         for piece in pieces:
@@ -181,7 +224,8 @@ class Board:
     def winner(self):
         if self.red_left <= 0: return WHITE
         if self.white_left <= 0: return RED
-        if not list(get_all_move_sequences(self, self.turn)):
+        # This now correctly calls its own method
+        if not list(self.get_all_move_sequences(self.turn)):
             return WHITE if self.turn == RED else RED
         return None
 
@@ -221,17 +265,19 @@ class Board:
     def get_all_valid_moves(self, color):
         moves = {}
         has_jumps = False
-        for piece in self.get_all_pieces(color):
-            jumps = self._get_moves_for_piece(piece, find_jumps=True)
-            if jumps:
-                has_jumps = True
-                moves[(piece.row, piece.col)] = set(jumps.keys())
-        if has_jumps:
-            return moves
-        for piece in self.get_all_pieces(color):
-            slides = self._get_moves_for_piece(piece, find_jumps=False)
-            if slides:
-                moves[(piece.row, piece.col)] = set(slides.keys())
+        all_move_sequences = list(self.get_all_move_sequences(color))
+        
+        if not all_move_sequences: return {}
+
+        is_jump = abs(all_move_sequences[0][0][0] - all_move_sequences[0][1][0]) == 2
+        
+        for path in all_move_sequences:
+            start_pos = path[0]
+            end_pos = path[-1]
+            if start_pos not in moves:
+                moves[start_pos] = set()
+            moves[start_pos].add(end_pos)
+            
         return moves
 
     def _get_moves_for_piece(self, piece, find_jumps):
