@@ -90,8 +90,21 @@ class CheckersGame:
 
     def _format_move_path(self, path):
         if not path or len(path) < 2: return ""
-        separator = 'x' if abs(path[0][0] - path[1][0]) == 2 else '-'
-        return separator.join(self._coord_to_acf(pos) for pos in path)
+        
+        start_pos = path[0]
+        end_pos = path[-1]
+        is_jump = abs(start_pos[0] - end_pos[0]) >= 2
+
+        # --- NEW: Formatting for long jumps as requested ---
+        if is_jump:
+            # For multi-jumps, show only the start and end
+            if len(path) > 2:
+                return f"{self._coord_to_acf(start_pos)}x{self._coord_to_acf(end_pos)}"
+            # For single jumps, show start x end
+            return f"{self._coord_to_acf(start_pos)}x{self._coord_to_acf(path[1])}"
+        
+        # Standard move formatting
+        return f"{self._coord_to_acf(start_pos)}-{self._coord_to_acf(end_pos)}"
 
     def step_back(self):
         if self.history_index > 0:
@@ -158,15 +171,17 @@ class CheckersGame:
         self._update_game_state_from_history()
 
     def handle_event(self, event):
-        if self.winner: return
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Always check for button clicks first, regardless of winner
             clicked_button = False
             for button in self.buttons:
                 if button.is_clicked(event.pos):
                     button.callback()
                     clicked_button = True
                     break
-            if not clicked_button:
+            
+            # Only handle clicks on the board itself if the game is not over
+            if not clicked_button and not self.winner:
                 row, col = event.pos[1] // SQUARE_SIZE, event.pos[0] // SQUARE_SIZE
                 if self.turn == self.player_color or not self.game_is_active:
                     current_board = self.board_history[self.history_index]

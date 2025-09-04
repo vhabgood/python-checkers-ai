@@ -31,7 +31,6 @@ class Board:
         new_board.zobrist_table = self.zobrist_table
         return new_board
 
-    # --- MOVE GENERATION LOGIC IS NOW PART OF THE BOARD CLASS ---
     def get_all_move_sequences(self, color):
         all_paths = []
         forced_jumps_found = False
@@ -55,36 +54,79 @@ class Board:
                 for end_pos in slides: yield [start_pos, end_pos]
 
     def _find_all_paths_from(self, current_path):
+        """
+        A recursive helper to find all possible multi-jump extensions from a given path.
+        This corrected version properly simulates the board state at each jump segment.
+        """
         paths = []
-        temp_board = self.apply_move(current_path)
         last_pos = current_path[-1]
-        
-        # The piece has moved, so we need to find it on the new board
-        moved_piece = temp_board.get_piece(last_pos[0], last_pos[1])
-        if moved_piece == 0: return [current_path]
 
-        more_jumps = temp_board._get_moves_for_piece(moved_piece, find_jumps=True)
+        # Create a temporary board reflecting the state *before* this next jump
+        temp_board = copy.deepcopy(self)
+        
+        # Manually apply the move segments in the current path to the temp_board
+        if len(current_path) > 1:
+            start_piece = temp_board.get_piece(current_path[0][0], current_path[0][1])
+            if start_piece == 0: return [current_path] # Should not happen
+            
+            captured_pieces = []
+            for i in range(len(current_path) - 1):
+                p_start, p_end = current_path[i], current_path[i+1]
+                mid_row, mid_col = (p_start[0] + p_end[0]) // 2, (p_start[1] + p_end[1]) // 2
+                captured = temp_board.get_piece(mid_row, mid_col)
+                if captured: captured_pieces.append(captured)
+
+            if captured_pieces: temp_board._remove(captured_pieces)
+            temp_board.move(start_piece, last_pos[0], last_pos[1])
+        
+        # Now, from this new board state, find the next possible jumps
+        moved_piece_on_temp_board = temp_board.get_piece(last_pos[0], last_pos[1])
+        if moved_piece_on_temp_board == 0: return [current_path]
+
+        more_jumps = temp_board._get_moves_for_piece(moved_piece_on_temp_board, find_jumps=True)
 
         if not more_jumps:
-            paths.append(current_path)
+            paths.append(current_path) # This is the end of a jump sequence
         else:
             for next_pos in more_jumps:
                 new_path = current_path + [next_pos]
-                paths.extend(temp_board._find_all_paths_from(new_path))
+                # The recursive call must be on the original board `self`
+                paths.extend(self._find_all_paths_from(new_path))
         return paths
 
+# In engine/board.py
+
     def _get_endgame_key(self):
-        """
-        If the board is in a known endgame state, generates the appropriate key for a database lookup.
-        This definitive version correctly classifies scenarios and formats the key to match the database.
-        """
-        w_men = self.white_left - self.white_kings
-        r_men = self.red_left - self.red_kings
-        w_kings = self.white_kings
-        r_kings = self.red_kings
+        total_pieces = self.red_left + self.white_left
+        if total_pieces > 8:
+            return None, None
+
+        w_men, w_kings, r_men, r_kings = 0, 0, 0, 0
+        white_king_pos, red_king_pos, white_men_pos, red_men_pos = [], [], [], []
         
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.get_piece(r,c)
+                if piece != 0:
+                    pos_acf = COORD_TO_ACF.get((r,c))
+                    if piece.color == WHITE:
+                        if piece.king:
+                            w_kings += 1
+                            white_king_pos.append(pos_acf)
+                        else:
+                            w_men += 1
+                            white_men_pos.append(pos_acf)
+                    else: # RED
+                        if piece.king:
+                            r_kings += 1
+                            red_king_pos.append(pos_acf)
+                        else:
+                            r_men += 1
+                            red_men_pos.append(pos_acf)
+        
+        logger.debug(f"DB_KEY_GEN: Checking board state. R:{r_kings}K,{r_men}M W:{w_kings}K,{w_men}M")
+
         table_name = None
-        # --- FIX: Expanded and corrected logic to recognize all of your endgame database types ---
         if r_kings == 3 and r_men == 0 and w_kings == 3 and w_men == 0: table_name = "db_3v3_kings"
         elif r_kings == 4 and r_men == 0 and w_kings == 3 and w_men == 0: table_name = "db_4v3_kings"
         elif r_kings == 4 and r_men == 0 and w_kings == 2 and w_men == 0: table_name = "db_4v2_kings"
@@ -98,32 +140,43 @@ class Board:
         elif r_kings == 3 and r_men == 1 and w_kings == 1 and w_men == 0: table_name = "db_3v1k1m"
         
         if table_name is None:
+            logger.debug("DB_KEY_GEN: Board state does not match any known endgame database.")
             return None, None
 
-        # Generate the key string by finding all piece positions
-        white_king_pos, red_king_pos, white_men_pos, red_men_pos = [], [], [], []
+        turn_char = 'w' if self.turn == WHITE else 'r'
+        key_tuple = (
+            tuple(sorted(white_king_pos)), tuple(sorted(white_men_pos)),
+            tuple(sorted(red_king_pos)), tuple(sorted(red_men_pos)),
+            turn_char
+        )
+
+        # --- FIX: Create a compact string representation of the key ---
+        compact_key_string = str(key_tuple).replace(" ", "")
+
+        logger.debug(f"DB_KEY_GEN: Match found! Table='{table_name}', Compact Key='{compact_key_string}'")
+        return table_name, compact_key_string
+        
         for r in range(ROWS):
             for c in range(COLS):
                 piece = self.get_piece(r,c)
                 if piece != 0:
                     pos_acf = COORD_TO_ACF.get((r,c))
                     if piece.color == WHITE:
-                        if piece.king: white_king_pos.append(pos_acf)
-                        else: white_men_pos.append(pos_acf)
+                        if piece.king:
+                            w_kings += 1
+                            white_king_pos.append(pos_acf)
+                        else:
+                            w_men += 1
+                            white_men_pos.append(pos_acf)
                     else: # RED
-                        if piece.king: red_king_pos.append(pos_acf)
-                        else: red_men_pos.append(pos_acf)
+                        if piece.king:
+                            r_kings += 1
+                            red_king_pos.append(pos_acf)
+                        else:
+                            r_men += 1
+                            red_men_pos.append(pos_acf)
         
-        # --- FIX: The key must exactly match the format from the creation script ---
-        # The turn must be 'w' or 'r', not the color tuple.
-        turn_char = 'w' if self.turn == WHITE else 'r'
-        
-        key_tuple = (
-            tuple(sorted(white_king_pos)), tuple(sorted(white_men_pos)),
-            tuple(sorted(red_king_pos)), tuple(sorted(red_men_pos)),
-            turn_char
-        )
-        return table_name, str(key_tuple)
+        # ... (the rest of the function is the same as the last version)
 
     def apply_move(self, path):
         temp_board = copy.deepcopy(self)
@@ -224,7 +277,6 @@ class Board:
     def winner(self):
         if self.red_left <= 0: return WHITE
         if self.white_left <= 0: return RED
-        # This now correctly calls its own method
         if not list(self.get_all_move_sequences(self.turn)):
             return WHITE if self.turn == RED else RED
         return None
@@ -233,12 +285,13 @@ class Board:
         self.draw_squares(win)
         if last_move_path:
             start_coord, end_coord = last_move_path[0], last_move_path[-1]
-            start_highlight = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
-            start_highlight.fill((200, 200, 60, 70))
-            win.blit(start_highlight, (start_coord[1] * SQUARE_SIZE, start_coord[0] * SQUARE_SIZE))
-            end_highlight = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
-            end_highlight.fill((200, 200, 60, 120))
-            win.blit(end_highlight, (end_coord[1] * SQUARE_SIZE, end_coord[0] * SQUARE_SIZE))
+            if start_coord and end_coord:
+                start_highlight = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                start_highlight.fill((200, 200, 60, 70))
+                win.blit(start_highlight, (start_coord[1] * SQUARE_SIZE, start_coord[0] * SQUARE_SIZE))
+                end_highlight = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                end_highlight.fill((200, 200, 60, 120))
+                win.blit(end_highlight, (end_coord[1] * SQUARE_SIZE, end_coord[0] * SQUARE_SIZE))
         if valid_moves:
             for move in valid_moves:
                 row, col = move
@@ -257,23 +310,18 @@ class Board:
         for r in range(ROWS):
             for c in range(COLS):
                 if c % 2 == ((r + 1) % 2):
-                    num = r * 4 + c // 2 + 1
+                    num = COORD_TO_ACF.get((r,c), "")
                     text = font.render(str(num), True, (200,200,200))
                     draw_r, draw_c = (ROWS - 1 - r, COLS - 1 - c) if flipped else (r, c)
                     win.blit(text, (draw_c * SQUARE_SIZE + 5, draw_r * SQUARE_SIZE + 5))
 
     def get_all_valid_moves(self, color):
         moves = {}
-        has_jumps = False
         all_move_sequences = list(self.get_all_move_sequences(color))
-        
         if not all_move_sequences: return {}
-
-        is_jump = abs(all_move_sequences[0][0][0] - all_move_sequences[0][1][0]) == 2
         
         for path in all_move_sequences:
-            start_pos = path[0]
-            end_pos = path[-1]
+            start_pos, end_pos = path[0], path[-1]
             if start_pos not in moves:
                 moves[start_pos] = set()
             moves[start_pos].add(end_pos)
