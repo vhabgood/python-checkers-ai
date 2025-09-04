@@ -5,32 +5,30 @@ from .constants import RED, WHITE, ROWS, COLS
 
 logger = logging.getLogger('board')
 
-# In engine/evaluation.py
-
 def evaluate_board(board):
     """
-    Calculates the static score of the board. Now includes a mobility component
-    and checks endgame databases with detailed logging.
+    Calculates the static score of the board.
     """
     # --- Check Endgame Tables ---
     if board.db_conn:
         try:
-            # --- FIX: Check the return value before unpacking to prevent crashes ---
             endgame_result = board._get_endgame_key()
             if endgame_result and endgame_result[0] is not None:
                 table_name, key = endgame_result
                 
                 logger.debug(f"DATABASE: Querying table '{table_name}' with key: {key}")
                 cursor = board.db_conn.cursor()
-                
-                # --- FIX 2: The database has one master table, not dynamic table names ---
                 cursor.execute("SELECT result FROM endgame_tables WHERE table_name = ? AND board_config = ?", (table_name, key))
                 result = cursor.fetchone()
                 
                 if result:
-                    logger.debug(f"DATABASE: Success! Result for key '{key}' is '{result[0]}'. Overriding standard eval.")
-                    if result[0] == 'WIN': return 1000
-                    if result[0] == 'LOSS': return -1000
+                    logger.info(f"DATABASE: SUCCESS! Result for key '{key}' is '{result[0]}'. Overriding standard eval.")
+                    # --- FIX: Handle integer scores from database ---
+                    db_score = int(result[0])
+                    # Return a very high or low score to represent a forced win/loss.
+                    # The score also encodes the number of moves to the win/loss.
+                    if db_score > 0: return 1000 - db_score # A faster win (lower ply) is better
+                    if db_score < 0: return -1000 - db_score # A slower loss (higher ply) is better
                     return 0 # Draw
                 else:
                     logger.debug(f"DATABASE: No entry found for key '{key}' in table '{table_name}'.")
@@ -38,7 +36,7 @@ def evaluate_board(board):
         except Exception as e:
             logger.error(f"DATABASE: Error during query: {e}", exc_info=True)
 
-    # --- Standard Evaluation (if not in a database) ---
+    # --- Standard Evaluation (only runs if not in a database scenario) ---
     white_men = board.white_left - board.white_kings
     red_men = board.red_left - board.red_kings
     material_score = (white_men - red_men) + (board.white_kings - board.red_kings) * 1.5

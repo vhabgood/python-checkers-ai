@@ -94,90 +94,6 @@ class Board:
                 paths.extend(self._find_all_paths_from(new_path))
         return paths
 
-# In engine/board.py
-
-    def _get_endgame_key(self):
-        total_pieces = self.red_left + self.white_left
-        if total_pieces > 8:
-            return None, None
-
-        w_men, w_kings, r_men, r_kings = 0, 0, 0, 0
-        white_king_pos, red_king_pos, white_men_pos, red_men_pos = [], [], [], []
-        
-        for r in range(ROWS):
-            for c in range(COLS):
-                piece = self.get_piece(r,c)
-                if piece != 0:
-                    pos_acf = COORD_TO_ACF.get((r,c))
-                    if piece.color == WHITE:
-                        if piece.king:
-                            w_kings += 1
-                            white_king_pos.append(pos_acf)
-                        else:
-                            w_men += 1
-                            white_men_pos.append(pos_acf)
-                    else: # RED
-                        if piece.king:
-                            r_kings += 1
-                            red_king_pos.append(pos_acf)
-                        else:
-                            r_men += 1
-                            red_men_pos.append(pos_acf)
-        
-        logger.debug(f"DB_KEY_GEN: Checking board state. R:{r_kings}K,{r_men}M W:{w_kings}K,{w_men}M")
-
-        table_name = None
-        if r_kings == 3 and r_men == 0 and w_kings == 3 and w_men == 0: table_name = "db_3v3_kings"
-        elif r_kings == 4 and r_men == 0 and w_kings == 3 and w_men == 0: table_name = "db_4v3_kings"
-        elif r_kings == 4 and r_men == 0 and w_kings == 2 and w_men == 0: table_name = "db_4v2_kings"
-        elif r_kings == 3 and r_men == 0 and w_kings == 2 and w_men == 0: table_name = "db_3v2_kings"
-        elif r_kings == 3 and r_men == 0 and w_kings == 1 and w_men == 0: table_name = "db_3v1_kings"
-        elif r_kings == 2 and r_men == 0 and w_kings == 1 and w_men == 0: table_name = "db_2v1_kings"
-        elif r_kings == 0 and r_men == 2 and w_kings == 0 and w_men == 1: table_name = "db_2v1_men"
-        elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 1: table_name = "db_2k1m_vs_2k1m"
-        elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 0: table_name = "db_2k1m_vs_2k"
-        elif r_kings == 2 and r_men == 1 and w_kings == 3 and w_men == 0: table_name = "db_2k1m_vs_3k"
-        elif r_kings == 3 and r_men == 1 and w_kings == 1 and w_men == 0: table_name = "db_3v1k1m"
-        
-        if table_name is None:
-            logger.debug("DB_KEY_GEN: Board state does not match any known endgame database.")
-            return None, None
-
-        turn_char = 'w' if self.turn == WHITE else 'r'
-        key_tuple = (
-            tuple(sorted(white_king_pos)), tuple(sorted(white_men_pos)),
-            tuple(sorted(red_king_pos)), tuple(sorted(red_men_pos)),
-            turn_char
-        )
-
-        # --- FIX: Create a compact string representation of the key ---
-        compact_key_string = str(key_tuple).replace(" ", "")
-
-        logger.debug(f"DB_KEY_GEN: Match found! Table='{table_name}', Compact Key='{compact_key_string}'")
-        return table_name, compact_key_string
-        
-        for r in range(ROWS):
-            for c in range(COLS):
-                piece = self.get_piece(r,c)
-                if piece != 0:
-                    pos_acf = COORD_TO_ACF.get((r,c))
-                    if piece.color == WHITE:
-                        if piece.king:
-                            w_kings += 1
-                            white_king_pos.append(pos_acf)
-                        else:
-                            w_men += 1
-                            white_men_pos.append(pos_acf)
-                    else: # RED
-                        if piece.king:
-                            r_kings += 1
-                            red_king_pos.append(pos_acf)
-                        else:
-                            r_men += 1
-                            red_men_pos.append(pos_acf)
-        
-        # ... (the rest of the function is the same as the last version)
-
     def apply_move(self, path):
         temp_board = copy.deepcopy(self)
         start_pos = path[0]
@@ -350,17 +266,89 @@ class Board:
                 if dest_square == 0:
                     moves[(end_row, end_col)] = []
         return moves
+
+    def _get_endgame_key(self):
+        total_pieces = self.red_left + self.white_left
+        if total_pieces > 8:
+            return None, None
+
+        w_men, w_kings, r_men, r_kings = 0, 0, 0, 0
+        white_king_pos, red_king_pos, white_men_pos, red_men_pos = [], [], [], []
         
-    def recalculate_pieces(self):
-        self.red_left = self.white_left = 0
-        self.red_kings = self.white_kings = 0
         for r in range(ROWS):
             for c in range(COLS):
                 piece = self.get_piece(r,c)
                 if piece != 0:
-                    if piece.color == RED:
-                        self.red_left += 1
-                        if piece.king: self.red_kings += 1
-                    else:
-                        self.white_left += 1
-                        if piece.king: self.white_kings += 1
+                    pos_acf = COORD_TO_ACF.get((r,c))
+                    if piece.color == WHITE:
+                        if piece.king: w_kings += 1; white_king_pos.append(pos_acf)
+                        else: w_men += 1; white_men_pos.append(pos_acf)
+                    else: # RED
+                        if piece.king: r_kings += 1; red_king_pos.append(pos_acf)
+                        else: r_men += 1; red_men_pos.append(pos_acf)
+        
+        logger.debug(f"DB_KEY_GEN: Checking board state. R:{r_kings}K,{r_men}M W:{w_kings}K,{w_men}M")
+
+        table_name = None
+        key_tuple = None
+        turn_char = 'w' if self.turn == WHITE else 'r'
+        
+        # --- FINAL, CORRECTED KEY LOGIC - Based on all Generator Scripts ---
+        kings = {r_kings, w_kings}
+        men = {r_men, w_men}
+        
+        # Case 1: Pure Kings vs Kings -> ( (r_kings_tuple), (w_kings_tuple), turn )
+        if men == {0} and kings in [{4,3}, {4,2}, {3,3}, {3,2}, {3,1}, {2,1}, {2,2}]:
+            key_tuple = (tuple(sorted(red_king_pos)), tuple(sorted(white_king_pos)), turn_char)
+            if kings == {4,3}: table_name = "db_4v3_kings"
+            elif kings == {4,2}: table_name = "db_4v2_kings"
+            elif kings == {3,3}: table_name = "db_3v3_kings"
+            elif kings == {3,2}: table_name = "db_3v2_kings"
+            elif kings == {3,1}: table_name = "db_3v1_kings"
+            elif kings == {2,1}: table_name = "db_2v1_kings"
+            elif kings == {2,2}: table_name = "db_2v2_kings"
+
+        # Case 2: Pure Men vs Men -> (stronger_men_tuple, weaker_man_tuple, turn)
+        elif kings == {0} and men == {2,1}:
+            table_name = "db_2v1_men"
+            if r_men > w_men: key_tuple = tuple(sorted(red_men_pos)) + tuple(white_men_pos) + (turn_char,)
+            else: key_tuple = tuple(sorted(white_men_pos)) + tuple(red_men_pos) + (turn_char,)
+        
+        # Case 3: Mixed pieces (each has a unique flat tuple structure)
+        elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 1: 
+            table_name = "db_2k1m_vs_2k1m"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + tuple(white_men_pos) + (turn_char,)
+        elif r_kings == 2 and r_men == 1 and w_kings == 3 and w_men == 0:
+            table_name = "db_2k1m_vs_3k"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
+        elif r_kings == 3 and r_men == 0 and w_kings == 2 and w_men == 1:
+            table_name = "db_2k1m_vs_3k"
+            key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
+        elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 0:
+            table_name = "db_2k1m_vs_2k"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
+        elif r_kings == 2 and r_men == 0 and w_kings == 2 and w_men == 1:
+            table_name = "db_2k1m_vs_2k"
+            key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
+        elif r_kings == 3 and r_men == 1 and w_kings == 3 and w_men == 0:
+            table_name = "db_3k1m_vs_3k"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
+        elif r_kings == 3 and r_men == 0 and w_kings == 3 and w_men == 1:
+            table_name = "db_3k1m_vs_3k"
+            key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
+        elif r_kings == 3 and r_men == 0 and w_kings == 1 and w_men == 1:
+            table_name = "db_3kv1k1m"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + tuple(white_men_pos) + (turn_char,)
+        elif r_kings == 1 and r_men == 1 and w_kings == 3 and w_men == 0:
+            table_name = "db_3kv1k1m"
+            key_tuple = tuple(sorted(white_king_pos)) + tuple(sorted(red_king_pos)) + tuple(red_men_pos) + (turn_char,)
+
+        if table_name is None:
+            logger.debug("DB_KEY_GEN: Board state does not match any known endgame database.")
+            return None, None
+
+        # --- FIX: Convert the tuple to a string exactly as the create_db script does, preserving spaces ---
+        key_string = str(key_tuple)
+        
+        logger.debug(f"DB_KEY_GEN: Match found! Table='{table_name}', Key='{key_string}'")
+        return table_name, key_string
