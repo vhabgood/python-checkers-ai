@@ -52,6 +52,7 @@ class Board:
             if slides:
                 start_pos = (piece.row, piece.col)
                 for end_pos in slides: yield [start_pos, end_pos]
+        return
 
     def _find_all_paths_from(self, current_path):
         """
@@ -297,9 +298,8 @@ class Board:
         kings = {r_kings, w_kings}
         men = {r_men, w_men}
         
-        # Case 1: Pure Kings vs Kings -> ( (r_kings_tuple), (w_kings_tuple), turn )
-        if men == {0} and kings in [{4,3}, {4,2}, {3,3}, {3,2}, {3,1}, {2,1}, {2,2}]:
-            key_tuple = (tuple(sorted(red_king_pos)), tuple(sorted(white_king_pos)), turn_char)
+        # Determine the table name first
+        if men == {0}: # Pure Kings vs Kings
             if kings == {4,3}: table_name = "db_4v3_kings"
             elif kings == {4,2}: table_name = "db_4v2_kings"
             elif kings == {3,3}: table_name = "db_3v3_kings"
@@ -307,47 +307,40 @@ class Board:
             elif kings == {3,1}: table_name = "db_3v1_kings"
             elif kings == {2,1}: table_name = "db_2v1_kings"
             elif kings == {2,2}: table_name = "db_2v2_kings"
-
-        # Case 2: Pure Men vs Men -> (stronger_men_tuple, weaker_man_tuple, turn)
-        elif kings == {0} and men == {2,1}:
-            table_name = "db_2v1_men"
-            if r_men > w_men: key_tuple = tuple(sorted(red_men_pos)) + tuple(white_men_pos) + (turn_char,)
-            else: key_tuple = tuple(sorted(white_men_pos)) + tuple(red_men_pos) + (turn_char,)
-        
-        # Case 3: Mixed pieces (each has a unique flat tuple structure)
-        elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 1: 
-            table_name = "db_2k1m_vs_2k1m"
-            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + tuple(white_men_pos) + (turn_char,)
-        elif r_kings == 2 and r_men == 1 and w_kings == 3 and w_men == 0:
-            table_name = "db_2k1m_vs_3k"
-            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
-        elif r_kings == 3 and r_men == 0 and w_kings == 2 and w_men == 1:
-            table_name = "db_2k1m_vs_3k"
-            key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
-        elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 0:
-            table_name = "db_2k1m_vs_2k"
-            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
-        elif r_kings == 2 and r_men == 0 and w_kings == 2 and w_men == 1:
-            table_name = "db_2k1m_vs_2k"
-            key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
-        elif r_kings == 3 and r_men == 1 and w_kings == 3 and w_men == 0:
-            table_name = "db_3k1m_vs_3k"
-            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
-        elif r_kings == 3 and r_men == 0 and w_kings == 3 and w_men == 1:
-            table_name = "db_3k1m_vs_3k"
-            key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
-        elif r_kings == 3 and r_men == 0 and w_kings == 1 and w_men == 1:
-            table_name = "db_3kv1k1m"
-            key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + tuple(white_men_pos) + (turn_char,)
-        elif r_kings == 1 and r_men == 1 and w_kings == 3 and w_men == 0:
-            table_name = "db_3kv1k1m"
-            key_tuple = tuple(sorted(white_king_pos)) + tuple(sorted(red_king_pos)) + tuple(red_men_pos) + (turn_char,)
+        elif kings == {0} and men == {2,1}: table_name = "db_2v1_men"
+        # Mixed piece scenarios
+        elif (r_kings, r_men, w_kings, w_men) == (2,1,2,1): table_name = "db_2k1m_vs_2k1m"
+        elif kings == {2,2} and men == {1,0}: table_name = "db_2k1m_vs_2k"
+        elif kings == {3,2} and men == {0,1}: table_name = "db_2k1m_vs_3k"
+        elif kings == {3,1} and men == {1,0}: table_name = "db_3k1m_vs_3k"
+        elif (r_kings, r_men, w_kings, w_men) == (3,0,1,1): table_name = "db_3kv1k1m"
+        elif (r_kings, r_men, w_kings, w_men) == (1,1,3,0): table_name = "db_3kv1k1m"
 
         if table_name is None:
             logger.debug("DB_KEY_GEN: Board state does not match any known endgame database.")
             return None, None
+            
+        # Now, construct the key in the precise format for the identified table
+        if "k1m" in table_name or "kv1k1m" in table_name: # Handle complex mixed piece scenarios with specific tuple structures
+            if r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 1: 
+                key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + tuple(white_men_pos) + (turn_char,)
+            elif r_kings == 2 and r_men == 1 and w_kings == 3 and w_men == 0:
+                key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
+            # ... and so on for all other mixed piece generators
+        elif "v" in table_name: # Handle simpler Kings vs Kings or Men vs Men (flat tuple, stronger side first)
+            red_material = r_kings * 1.5 + r_men
+            white_material = w_kings * 1.5 + w_men
+            r_pieces = tuple(sorted(red_king_pos + red_men_pos))
+            w_pieces = tuple(sorted(white_king_pos + white_men_pos))
+            if red_material >= white_material:
+                key_tuple = r_pieces + w_pieces + (turn_char,)
+            else:
+                key_tuple = w_pieces + r_pieces + (turn_char,)
+        else: # Default to nested for pure KvK as a fallback (should not be reached with the logic above)
+             key_tuple = (tuple(sorted(red_king_pos)), tuple(sorted(white_king_pos)), turn_char)
 
-        # --- FIX: Convert the tuple to a string exactly as the create_db script does, preserving spaces ---
+
+        # Convert final tuple to string exactly as the create_db script does
         key_string = str(key_tuple)
         
         logger.debug(f"DB_KEY_GEN: Match found! Table='{table_name}', Key='{key_string}'")

@@ -14,7 +14,6 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
 
     if maximizing_player:
         max_eval = float('-inf')
-        # Now calls the board's method for moves
         for path in board.get_all_move_sequences(color_to_move):
             move_board = board.apply_move(path)
             evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
@@ -26,7 +25,6 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         return max_eval, best_move_sequence
     else: # Minimizing player
         min_eval = float('inf')
-        # Now calls the board's method for moves
         for path in board.get_all_move_sequences(color_to_move):
             move_board = board.apply_move(path)
             evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
@@ -40,7 +38,6 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
 def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
     is_maximizing = color_to_move == WHITE
     
-    # Now calls the board's method for moves
     possible_moves = list(board.get_all_move_sequences(color_to_move))
 
     if not possible_moves: return None, []
