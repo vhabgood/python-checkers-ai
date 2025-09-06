@@ -268,6 +268,8 @@ class Board:
                     moves[(end_row, end_col)] = []
         return moves
 
+# --- Place this revised method inside your Board class in engine/board.py ---
+
     def _get_endgame_key(self):
         """
         Generates a canonical, stringified tuple key for the current board state
@@ -309,9 +311,25 @@ class Board:
                 table_name = "db_2v1_kings"
                 if r_kings == 2: key_tuple = tuple(sorted(red_king_pos)) + tuple(white_king_pos) + (turn_char,)
                 else: key_tuple = tuple(sorted(white_king_pos)) + tuple(red_king_pos) + (turn_char,)
-            # ... Add other pure king scenarios here in the same flat-tuple style ...
-            elif {r_kings, w_kings} == {3, 2}: table_name = "db_3v2_kings"
-            # ... etc.
+            elif {r_kings, w_kings} == {3, 1}:
+                table_name = "db_3v1_kings"
+                if r_kings == 3: key_tuple = tuple(sorted(red_king_pos)) + tuple(white_king_pos) + (turn_char,)
+                else: key_tuple = tuple(sorted(white_king_pos)) + tuple(red_king_pos) + (turn_char,)
+            elif {r_kings, w_kings} == {3, 2}:
+                table_name = "db_3v2_kings"
+                if r_kings == 3: key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
+                else: key_tuple = tuple(sorted(white_king_pos)) + tuple(sorted(red_king_pos)) + (turn_char,)
+            elif {r_kings, w_kings} == {4, 2}:
+                table_name = "db_4v2_kings"
+                if r_kings == 4: key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
+                else: key_tuple = tuple(sorted(white_king_pos)) + tuple(sorted(red_king_pos)) + (turn_char,)
+            elif {r_kings, w_kings} == {4, 3}:
+                table_name = "db_4v3_kings"
+                if r_kings == 4: key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
+                else: key_tuple = tuple(sorted(white_king_pos)) + tuple(sorted(red_king_pos)) + (turn_char,)
+            elif r_kings == 3 and w_kings == 3:
+                table_name = "db_3v3_kings"
+                key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
 
         # Pure Men vs Men
         elif r_kings == 0 and w_kings == 0:
@@ -320,22 +338,35 @@ class Board:
                 if r_men == 2: key_tuple = tuple(sorted(red_men_pos)) + tuple(white_men_pos) + (turn_char,)
                 else: key_tuple = tuple(sorted(white_men_pos)) + tuple(red_men_pos) + (turn_char,)
 
-        # Mixed Piece Scenarios (add all others from your list)
-        elif {r_kings, r_men, w_kings, w_men} == {2, 1, 2, 0}:
+        # Mixed Piece Scenarios
+        elif {r_kings, r_men} == {1, 1} and w_kings == 3 and w_men == 0:
+            table_name = "db_3kv1k1m"
+            key_tuple = tuple(sorted(white_king_pos)) + tuple(red_king_pos) + tuple(red_men_pos) + (turn_char,)
+        elif {w_kings, w_men} == {1, 1} and r_kings == 3 and r_men == 0:
+            table_name = "db_3kv1k1m"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(white_king_pos) + tuple(white_men_pos) + (turn_char,)
+        elif {r_kings, r_men} == {2, 1} and w_kings == 2 and w_men == 0:
             table_name = "db_2k1m_vs_2k"
-            if w_kings == 2: # Red has the man
-                key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
-            else: # White has the man
-             key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + (turn_char,)
+        elif {w_kings, w_men} == {2, 1} and r_kings == 2 and r_men == 0:
+            table_name = "db_2k1m_vs_2k"
+            key_tuple = tuple(sorted(white_king_pos)) + tuple(white_men_pos) + tuple(sorted(red_king_pos)) + (turn_char,)
+        elif {r_kings, r_men} == {2, 1} and w_kings == 3 and w_men == 0:
+            table_name = "db_2k1m_vs_3k"
+            key_tuple = tuple(sorted(white_king_pos)) + tuple(sorted(red_king_pos)) + tuple(red_men_pos) + (turn_char,)
+        elif {w_kings, w_men} == {2, 1} and r_kings == 3 and r_men == 0:
+            table_name = "db_2k1m_vs_3k"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + tuple(white_men_pos) + (turn_char,)
+        elif {r_kings, r_men} == {2, 1} and {w_kings, w_men} == {2, 1}:
+            table_name = "db_2k1m_vs_2k1m"
+            key_tuple = tuple(sorted(red_king_pos)) + tuple(red_men_pos) + tuple(sorted(white_king_pos)) + tuple(white_men_pos) + (turn_char,)
+
 
         # --- 3. Finalize and return the key ---
         if table_name is None:
             logger.debug("DB_KEY_GEN: Board state does not match any known endgame database.")
             return None, None
 
-        # If a key_tuple hasn't been specifically formed yet, create it now for the remaining cases
-        # This part is complex and requires knowing the exact key structure for each db.
-        # For now, we only handle the cases explicitly defined above.
         if key_tuple is None:
             logger.warning(f"DB_KEY_GEN: Logic for table '{table_name}' is not fully implemented yet!")
             return None, None

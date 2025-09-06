@@ -23,7 +23,7 @@ class CheckersGame:
         self.args = args
         self.db_conn = None
         try:
-            self.db_conn = sqlite3.connect("checkers_database.db")
+            self.db_conn = sqlite3.connect("checkers_endgame.db")
         except Exception as e:
             logger.error(f"DATABASE: Failed to connect: {e}")
             self.db_conn = None

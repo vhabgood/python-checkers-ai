@@ -16,23 +16,40 @@ def evaluate_board(board):
     # --- 1. Check Endgame Tables (Highest Priority) ---
     if board.db_conn:
         try:
-            endgame_result = board._get_endgame_key()
-            if endgame_result and endgame_result[0] is not None:
-                table_name, key = endgame_result
-                
-                logger.debug(f"DATABASE: Querying table '{table_name}' with key: {key}")
+            table_name, key_string = board._get_endgame_key()
+        
+            if table_name and key_string:
+                # --- THIS IS THE CORRECTED LOGIC ---
+            
+                # 1. Convert the key string back into a tuple
+                key_tuple = eval(key_string)
+            
+                # 2. Dynamically build the query based on the key's length
+                num_pieces = len(key_tuple) - 1
+                pos_cols = ', '.join([f'p{i+1}_pos' for i in range(num_pieces)])
+            
+                # Create the WHERE clause with the correct number of placeholders
+                where_clause = ' AND '.join([f'p{i+1}_pos = ?' for i in range(num_pieces)])
+            
+                sql = f"SELECT result FROM {table_name} WHERE {where_clause} AND turn = ?"
+            
+                # 3. Execute with the correctly unpacked tuple
                 cursor = board.db_conn.cursor()
-                cursor.execute("SELECT result FROM endgame_tables WHERE table_name = ? AND board_config = ?", (table_name, key))
+                params = key_tuple[:-1] + (key_tuple[-1],) # Unpack all piece positions and the turn
+            
+                logger.debug(f"DATABASE: Querying with SQL: {sql} and PARAMS: {params}")
+                cursor.execute(sql, params)
                 result = cursor.fetchone()
-                
+            
                 if result:
-                    logger.info(f"DATABASE: SUCCESS! Result for key '{key}' is '{result[0]}'. Overriding standard eval.")
+                    logger.info(f"DATABASE: SUCCESS! Result for key '{key_string}' is '{result[0]}'. Overriding standard eval.")
                     db_score = int(result[0])
-                    if db_score > 0: return 1000 - db_score
+                    # This scoring is perfect, don't change it.
+                    if db_score > 0: return 1000 - db_score 
                     if db_score < 0: return -1000 - db_score
                     return 0 # Draw
                 else:
-                    logger.debug(f"DATABASE: No entry found for key '{key}' in table '{table_name}'.")
+                    logger.debug(f"DATABASE: No entry found for key '{key_string}' in table '{table_name}'.")
 
         except Exception as e:
             logger.error(f"DATABASE: Error during query: {e}", exc_info=True)
