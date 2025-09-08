@@ -1,9 +1,8 @@
-# endgame_generator_3Kv1K.py
+# endgame_generator_3Kv1K_V3.py
 import pickle
 from itertools import combinations
 import time
 
-# --- Mappings (same as before) ---
 ACF_TO_COORD, COORD_TO_ACF = {}, {}
 num = 1
 for r in range(8):
@@ -11,148 +10,96 @@ for r in range(8):
         if (r + c) % 2 == 1:
             ACF_TO_COORD[num], COORD_TO_ACF[(r, c)] = (r, c), num
             num += 1
-
 VALID_SQUARES = list(ACF_TO_COORD.keys())
 
-# --- Helper Functions for Move Logic ---
-
 def get_king_moves(position):
-    """
-    Generates all legal moves for the current player from a given 3K v 1K position.
-    A position tuple is now (rk1, rk2, rk3, wk, turn).
-    """
-    # *** CHANGED: Unpacking 5 elements now ***
-    rk1_sq, rk2_sq, rk3_sq, wk_sq, turn = position
+    rk_sqs, wk_sq, turn = set(position[:3]), position[3], position[4]
+    board = {ACF_TO_COORD[sq]: 'R' for sq in rk_sqs}
+    board[ACF_TO_COORD[wk_sq]] = 'W'
     moves = []
-    
-    board = {
-        ACF_TO_COORD[rk1_sq]: 'R',
-        ACF_TO_COORD[rk2_sq]: 'R',
-        ACF_TO_COORD[rk3_sq]: 'R',
-        ACF_TO_COORD[wk_sq]: 'W'
-    }
 
-    pieces_to_move = []
-    if turn == 'r':
-        pieces_to_move = [(rk1_sq, 'R'), (rk2_sq, 'R'), (rk3_sq, 'R')]
-        opponent_color = 'W'
-    else: # turn == 'w'
-        pieces_to_move = [(wk_sq, 'W')]
-        opponent_color = 'R'
+    pieces_to_move, opponent_pieces, next_turn = (rk_sqs, {wk_sq}, 'w') if turn == 'r' else ({wk_sq}, rk_sqs, 'r')
 
-    # Check for Jumps First (Forced)
-    for piece_sq, piece_color in pieces_to_move:
-        if piece_color == 'R': # Only red kings can possibly jump the white king
-            r_start, c_start = ACF_TO_COORD[piece_sq]
-            for dr in [-1, 1]:
-                for dc in [-1, 1]:
-                    # Check if the square being jumped contains the white king
-                    if (r_start + dr, c_start + dc) == ACF_TO_COORD[wk_sq]:
-                        # Check if the landing square is on the board and empty
-                        r_land, c_land = r_start + 2*dr, c_start + 2*dc
-                        if (r_land, c_land) in COORD_TO_ACF and (r_land, c_land) not in board:
-                            # A jump is possible, this is an immediate win.
-                            return [] # Signifies a capture is available.
-
-    # If no jumps, find simple moves
-    for piece_sq, piece_color in pieces_to_move:
+    for piece_sq in pieces_to_move:
         r_start, c_start = ACF_TO_COORD[piece_sq]
-        for dr in [-1, 1]:
-            for dc in [-1, 1]:
-                r_new, c_new = r_start + dr, c_start + dc
-                if (r_new, c_new) in COORD_TO_ACF and (r_new, c_new) not in board:
-                    new_sq = COORD_TO_ACF[(r_new, c_new)]
-                    if turn == 'r':
-                        # *** CHANGED: Rebuilding the position tuple for 3 kings ***
-                        red_kings = [rk1_sq, rk2_sq, rk3_sq]
-                        red_kings.remove(piece_sq)
-                        red_kings.append(new_sq)
-                        new_pos = tuple(sorted(red_kings)) + (wk_sq, 'w')
-                        moves.append(new_pos)
-                    else: # turn == 'w'
-                        new_pos = tuple(sorted((rk1_sq, rk2_sq, rk3_sq))) + (new_sq, 'r')
-                        moves.append(new_pos)
+        for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            jump_over = (r_start + dr, c_start + dc)
+            land = (r_start + 2 * dr, c_start + 2 * dc)
+            if land in COORD_TO_ACF and land not in board and COORD_TO_ACF.get(jump_over) in opponent_pieces:
+                return [] # Capture is a terminal win
+
+    for piece_sq in pieces_to_move:
+        r_start, c_start = ACF_TO_COORD[piece_sq]
+        for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            r_new, c_new = r_start + dr, c_start + dc
+            if (r_new, c_new) in COORD_TO_ACF and (r_new, c_new) not in board:
+                new_sq = COORD_TO_ACF[(r_new, c_new)]
+                next_rk_sqs, next_wk_sq = list(rk_sqs), wk_sq
+                if turn == 'r':
+                    next_rk_sqs.remove(piece_sq); next_rk_sqs.append(new_sq)
+                else:
+                    next_wk_sq = new_sq
+                moves.append(tuple(sorted(next_rk_sqs)) + (next_wk_sq,) + (next_turn,))
     return moves
 
-# --- Database Generation Logic ---
-
 def generate_3Kv1K_positions():
-    """Generates all positions for 3 Red Kings vs 1 White King."""
     positions = set()
-    print(f"Generating all combinations of 4 pieces on {len(VALID_SQUARES)} squares...")
-    # *** CHANGED: combinations of 4 pieces now ***
+    print("Generating 3 Kings vs 1 King positions...")
     for squares in combinations(VALID_SQUARES, 4):
-        # For each combination, assign the white king to each spot
         for i in range(4):
             wk_sq = squares[i]
-            red_squares = list(squares)
-            red_squares.pop(i)
-            # Standardize order of red kings
-            key = tuple(sorted(red_squares))
-            positions.add(key + (wk_sq, 'r'))
-            positions.add(key + (wk_sq, 'w'))
-
-    print(f"Generated {len(positions)} unique positions.")
+            rk_sqs = tuple(sorted(list(set(squares) - {wk_sq})))
+            positions.add(rk_sqs + (wk_sq, 'r',))
+            positions.add(rk_sqs + (wk_sq, 'w',))
+    print(f"Generated {len(positions)} positions.")
     return list(positions)
 
 def save_database(db, filename="db_3v1_kings.pkl"):
     with open(filename, "wb") as f: pickle.dump(db, f)
     print(f"Database with {len(db)} solved positions saved to {filename}")
 
-# --- Main Execution ---
-
 if __name__ == '__main__':
     start_time = time.time()
-    
     endgame_db = {}
     all_positions = generate_3Kv1K_positions()
     
-    ply = 1
-    
-    print("\nStarting retrograde analysis for 3 Kings vs 1 King...")
     print("Finding all Win-in-1 positions...")
-    newly_solved_positions = []
+    newly_solved = []
     for pos in all_positions:
-        if pos[4] == 'r' and not get_king_moves(pos):
-            endgame_db[pos] = 1
-            newly_solved_positions.append(pos)
-    print(f"Found {len(newly_solved_positions)} Win-in-1 positions.")
-    
-    # The main analysis loop is logically identical to the 2v1 generator
-    while newly_solved_positions:
-        ply += 1
-        newly_solved_positions_this_ply = []
-        
-        if ply % 2 == 0: # Even Ply: White's turn
-            print(f"\nSolving Ply {ply}: Finding positions where White must move into a Red win...")
-            target_value = ply - 1
-            for pos in all_positions:
-                if pos in endgame_db: continue
-                if pos[4] == 'w':
-                    moves = get_king_moves(pos)
-                    if not moves: continue
-                    if all(endgame_db.get(move) == target_value for move in moves):
-                        endgame_db[pos] = -ply
-                        newly_solved_positions_this_ply.append(pos)
-        else: # Odd Ply: Red's turn
-            print(f"\nSolving Ply {ply}: Finding positions where Red can force a win...")
-            target_value = -(ply - 1)
-            for pos in all_positions:
-                if pos in endgame_db: continue
-                if pos[4] == 'r':
-                    moves = get_king_moves(pos)
-                    if any(endgame_db.get(move) == target_value for move in moves):
-                        endgame_db[pos] = ply
-                        newly_solved_positions_this_ply.append(pos)
+        if not get_king_moves(pos):
+            # 3v1 is a win for the side with 3 kings
+            endgame_db[pos] = 1 if pos[4] == 'r' else -1
+            newly_solved.append(pos)
+    print(f"Found {len(newly_solved)} Win-in-1 positions.")
 
-        newly_solved_positions = newly_solved_positions_this_ply
-        if newly_solved_positions:
-            print(f"Found {len(newly_solved_positions)} positions solved at ply {ply}.")
+    ply = 1
+    while newly_solved:
+        ply += 1
+        last_solved = newly_solved; newly_solved = []
+        
+        print(f"\nSolving Ply {ply}...")
+        for pos in all_positions:
+            if pos in endgame_db: continue
+            
+            moves = get_king_moves(pos)
+            if not moves: continue
+            
+            turn = pos[4]
+            # Red's turn (finding win)
+            if turn == 'r':
+                target_value = -(ply - 1)
+                if any(endgame_db.get(move) == target_value for move in moves):
+                    endgame_db[pos] = ply; newly_solved.append(pos)
+            # White's turn (finding loss)
+            else:
+                target_value = ply - 1
+                if all(endgame_db.get(move) == target_value for move in moves):
+                    endgame_db[pos] = -ply; newly_solved.append(pos)
+
+        if newly_solved: print(f"Found {len(newly_solved)} positions solved at ply {ply}.")
 
     print("\n--------------------")
-    print("Retrograde analysis complete!")
+    print("Retrograde analysis complete! All 3v1 positions are decisive.")
     end_time = time.time()
     print(f"Total time taken: {end_time - start_time:.2f} seconds.")
-    
     save_database(endgame_db)
-
