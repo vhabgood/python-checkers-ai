@@ -224,14 +224,21 @@ class CheckersGame:
     def draw(self):
         self.screen.fill((40, 40, 40))
         current_board = self.board_history[self.history_index]
-        
-        turn_for_moves = current_board.turn 
-        self.valid_moves = current_board.get_all_valid_moves(turn_for_moves)
+        turn_for_moves = current_board.turn
+        all_paths = current_board.get_all_move_sequences(turn_for_moves)
+        valid_moves_dict = {}
+        for path in all_paths:
+    	    start_pos = path[0]
+    	    end_pos = path[-1]
+    	    if start_pos not in valid_moves_dict:
+    	        valid_moves_dict[start_pos] = set()
+    	    valid_moves_dict[start_pos].add(end_pos)
+        self.valid_moves = valid_moves_dict
         
         moves_to_highlight = set()
         if self.selected_piece:
             moves_to_highlight = self.valid_moves.get((self.selected_piece.row, self.selected_piece.col), set())
-        
+        print(f"DEBUG: Highlighting moves: {moves_to_highlight}") 
         current_board.draw(self.screen, self.font, self.show_board_numbers, self.board_flipped, moves_to_highlight, self.last_move_path)
         
         self.draw_side_panel()
