@@ -141,22 +141,17 @@ class Board:
 
     def draw(self, screen, font, show_numbers, flipped, valid_moves, last_move_path):
         self.draw_squares(screen)
-    
         if last_move_path:
-        	# last_move_path is a list of tuples, e.g., [(start_r, start_c), (end_r, end_c)]
-        	for r_pos, c_pos in last_move_path:
-            	    r, c = (ROWS - 1 - r_pos, COLS - 1 - c_pos) if flipped else (r_pos, c_pos)
-            	    pygame.draw.rect(screen, (50, 50, 0), (c * SQUARE_SIZE, r * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
-    
+            for r_pos, c_pos in last_move_path:
+                r, c = (ROWS - 1 - r_pos, COLS - 1 - c_pos) if flipped else (r_pos, c_pos)
+                pygame.draw.rect(screen, (50, 50, 0), (c * SQUARE_SIZE, r * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+        
         for r_idx, row in enumerate(self.board):
             for c_idx, piece in enumerate(row):
                 if piece != 0:
                     piece.draw(screen)
-    
-        # --- THIS IS THE CORRECTED LOGIC ---
+        
         if valid_moves:
-            # The 'valid_moves' variable is now already a set of the (row, col) tuples
-            # we want to highlight. We can iterate over it directly.
             for move in valid_moves:
                 r, c = (ROWS - 1 - move[0], COLS - 1 - move[1]) if flipped else move
                 pygame.draw.circle(screen, (0, 150, 0), (c * SQUARE_SIZE + SQUARE_SIZE // 2, r * SQUARE_SIZE + SQUARE_SIZE // 2), 15)
@@ -234,7 +229,7 @@ class Board:
                  key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
         elif r_kings == 0 and w_kings == 0 and {r_men, w_men} == {2, 1}:
             table_name = "db_2v1_men"
-            key_tuple = tuple(sorted(red_men_pos)) + tuple(white_men_pos) + (turn_char,)
+            key_tuple = tuple(sorted(red_men_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
         else:
             if r_kings == 3 and r_men == 0 and w_kings == 1 and w_men == 1:
                 table_name = "db_3kv1k1m"
