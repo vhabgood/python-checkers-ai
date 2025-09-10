@@ -238,7 +238,7 @@ class CheckersGame:
         moves_to_highlight = set()
         if self.selected_piece:
             moves_to_highlight = self.valid_moves.get((self.selected_piece.row, self.selected_piece.col), set())
-        print(f"DEBUG: Highlighting moves: {moves_to_highlight}") 
+      #  print(f"DEBUG: Highlighting moves: {moves_to_highlight}") 
         current_board.draw(self.screen, self.font, self.show_board_numbers, self.board_flipped, moves_to_highlight, self.last_move_path)
         
         self.draw_side_panel()

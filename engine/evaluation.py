@@ -15,12 +15,16 @@ def evaluate_board(board):
     # --- 1. Check Endgame Tables (Highest Priority) ---
     if board.db_conn:
         try:
-            table_name, key_string = board._get_endgame_key()
-            if table_name and key_string:
-                key_tuple = eval(key_string)
+            # The _get_endgame_key function now returns the tuple directly
+            table_name, key_tuple = board._get_endgame_key()
+
+            # We check if the key_tuple is valid, and REMOVE the old eval() line
+            if table_name and key_tuple:
                 num_pieces = len(key_tuple) - 1
                 where_clause = ' AND '.join([f'p{i + 1}_pos = ?' for i in range(num_pieces)])
                 sql = f"SELECT result FROM {table_name} WHERE {where_clause} AND turn = ?"
+                
+                # The key_tuple is already in the correct format for the SQL parameters
                 params = key_tuple
 
                 human_readable_turn = "White" if key_tuple[-1] == 'w' else "Red"
@@ -33,13 +37,13 @@ def evaluate_board(board):
 
                 if result:
                     logger.info(
-                        f"DATABASE: SUCCESS! Result for key '{key_string}' is '{result[0]}'. Overriding standard eval.")
+                        f"DATABASE: SUCCESS! Result for key '{key_tuple}' is '{result[0]}'. Overriding standard eval.")
                     db_score = int(result[0])
                     if db_score > 0: return 1000 - db_score
                     if db_score < 0: return -1000 - db_score
                     return 0  # Draw
                 else:
-                    logger.debug(f"DATABASE: No entry found for key '{key_string}' in table '{table_name}'.")
+                    logger.debug(f"DATABASE: No entry found for key '{key_tuple}' in table '{table_name}'.")
 
         except Exception as e:
             logger.error(f"DATABASE: Error during query: {e}", exc_info=True)
