@@ -215,7 +215,7 @@ class Board:
         w_men, r_men = len(white_men_pos), len(red_men_pos)
         turn_char = 'w' if self.turn == WHITE else 'r'
         
-        logger.debug(f"DB_KEY_GEN: Checking board state. R:{r_kings}K,{r_men}M W:{w_kings}K,{w_men}M")
+   #     logger.debug(f"DB_KEY_GEN: Checking board state. R:{r_kings}K,{r_men}M W:{w_kings}K,{w_men}M")
 
         table_name, key_tuple = None, None
         
@@ -236,10 +236,14 @@ class Board:
                  key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
 
         # Pure Men vs Men
-        elif r_kings == 0 and w_kings == 0 and {r_men, w_men} == {2, 1}:
-            table_name = "db_2v1_men"
-            # Always sort BOTH red and white men positions
-            key_tuple = tuple(sorted(red_men_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
+        elif r_kings == 0 and w_kings == 0:
+            men_config = frozenset([r_men, w_men])
+            if men_config == frozenset([2, 1]):
+                table_name = "db_2v1_men"
+                key_tuple = tuple(sorted(red_men_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
+            elif men_config == frozenset([3, 1]):
+                table_name = "db_3v1_men"
+                key_tuple = tuple(sorted(red_men_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
         
         # Mixed Piece Scenarios
         else:

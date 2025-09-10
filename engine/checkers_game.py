@@ -149,7 +149,7 @@ class CheckersGame:
             logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
             best_move, top_moves = get_ai_move_analysis(board_instance, self.ai_depth, color_to_move, evaluate_board)
             self.ai_move_queue.put({'best': best_move, 'top': top_moves})
-            logger.info("AI_THREAD: Calculation finished normally. Move placed in queue.")
+            #logger.info("AI_THREAD: Calculation finished normally. Move placed in queue.")
         except Exception as e:
             logger.error(f"AI_THREAD: CRITICAL ERROR during calculation: {e}", exc_info=True)
             self.ai_move_queue.put({'best': None, 'top': []})
@@ -448,7 +448,7 @@ class CheckersGame:
         found_path = next((path for path in all_possible_sequences if path[0] == start_pos and path[-1] == move_end_pos), None)
         
         if found_path:
-            logger.info(f"Player move validated. Applying sequence: {self._format_move_path(found_path)}")
+            #logger.info(f"Player move validated. Applying sequence: {self._format_move_path(found_path)}")
             self.game_is_active = True
             self._apply_move_sequence(found_path)
             return True
