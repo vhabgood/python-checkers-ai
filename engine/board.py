@@ -263,7 +263,7 @@ class Board:
         if table_name is None:
             return None, None
 
-        key_string = str(key_tuple)
+       # key_string = str(key_tuple)
         
-        logger.debug(f"DB_KEY_GEN: Match found! Table='{table_name}', Key='{key_string}'")
-        return table_name, key_string
+        logger.debug(f"DB_KEY_GEN: Match found! Table='{table_name}', Key='{key_tuple}'")
+        return table_name, key_tuple

@@ -21,7 +21,7 @@ def evaluate_board(board):
                 num_pieces = len(key_tuple) - 1
                 where_clause = ' AND '.join([f'p{i + 1}_pos = ?' for i in range(num_pieces)])
                 sql = f"SELECT result FROM {table_name} WHERE {where_clause} AND turn = ?"
-                params = key_tuple[:-1] + (key_tuple[-1],)
+                params = key_tuple
 
                 human_readable_turn = "White" if key_tuple[-1] == 'w' else "Red"
                 human_readable_key = f"Positions: {key_tuple[:-1]}, Turn: {human_readable_turn}"
