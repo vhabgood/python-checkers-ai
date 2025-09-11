@@ -57,6 +57,7 @@ def parse_arguments():
 # Import game states and game logic
 from game_states import PlayerSelectionScreen, LoadingScreen
 from engine.checkers_game import CheckersGame
+from engine.engine_match import EngineMatchGame # <-- Import the new class
 
 class App:
     def __init__(self, args):
@@ -71,7 +72,8 @@ class App:
         self.states = {
             "player_selection": PlayerSelectionScreen(self.screen),
             "loading": LoadingScreen(self.screen, self.status_queue),
-            "game": None
+            "game": None,
+            "engine_match": None
         }
         self.state = self.states["player_selection"]
         self.loading_thread = None
@@ -102,6 +104,10 @@ class App:
             elif next_state_name == "game":
                 if self.states["game"]: self.state = self.states["game"]
                 else: logger.error("Attempted to transition to game state, but game object is not ready.")
+            elif next_state_name == "engine_match": # <-- Handle the new state
+                # Engine vs Engine mode loads instantly, no thread needed
+                self.states["engine_match"] = EngineMatchGame(self.screen, self.status_queue, self.args)
+                self.state = self.states["engine_match"]
             elif next_state_name is None: self.done = True
 
     def main_loop(self):

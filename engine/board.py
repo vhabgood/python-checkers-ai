@@ -187,15 +187,12 @@ class Board:
             return WHITE if self.turn == RED else RED
         return None
         
-# In engine/board.py
-
     def _get_endgame_key(self):
         """
-        Generates a canonical, stringified FLAT tuple key for the current board state
-        by sorting all piece lists to guarantee a match with the database.
+        Generates a canonical key for the current board state for database lookup.
         """
         total_pieces = self.red_left + self.white_left
-        if total_pieces > 8:
+        if total_pieces > 8: # Max pieces for our DBs
             return None, None
 
         white_king_pos, red_king_pos, white_men_pos, red_men_pos = [], [], [], []
@@ -215,59 +212,63 @@ class Board:
         w_men, r_men = len(white_men_pos), len(red_men_pos)
         turn_char = 'w' if self.turn == WHITE else 'r'
         
-   #     logger.debug(f"DB_KEY_GEN: Checking board state. R:{r_kings}K,{r_men}M W:{w_kings}K,{w_men}M")
-
         table_name, key_tuple = None, None
         
-        # --- FINAL, CORRECTED KEY GENERATION LOGIC ---
-
-        # Pure Kings vs Kings
+        # --- Database Lookup Logic ---
+        
+        # Pure Kings
         if r_men == 0 and w_men == 0:
-            kings_config = frozenset([r_kings, w_kings])
-            if kings_config == frozenset([2, 1]): table_name = "db_2v1_kings"
-            elif kings_config == frozenset([3, 1]): table_name = "db_3v1_kings"
-            elif kings_config == frozenset([3, 2]): table_name = "db_3v2_kings"
-            elif kings_config == frozenset([4, 2]): table_name = "db_4v2_kings"
-            elif kings_config == frozenset([4, 3]): table_name = "db_4v3_kings"
+            config = frozenset([r_kings, w_kings])
+            if config == frozenset([2, 1]): table_name = "db_2v1_kings"
+            elif config == frozenset([3, 1]): table_name = "db_3v1_kings"
+            elif config == frozenset([3, 2]): table_name = "db_3v2_kings"
+            elif r_kings == 2 and w_kings == 2: table_name = "db_2v2_kings"
             elif r_kings == 3 and w_kings == 3: table_name = "db_3v3_kings"
             
             if table_name:
-                 # Always sort BOTH red and white king positions
                  key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
 
-        # Pure Men vs Men
+        # Pure Men
         elif r_kings == 0 and w_kings == 0:
-            men_config = frozenset([r_men, w_men])
-            if men_config == frozenset([2, 1]):
-                table_name = "db_2v1_men"
-                key_tuple = tuple(sorted(red_men_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
-            elif men_config == frozenset([3, 1]):
-                table_name = "db_3v1_men"
+            config = frozenset([r_men, w_men])
+            if config == frozenset([2, 1]): table_name = "db_2v1_men"
+            elif config == frozenset([3, 1]): table_name = "db_3v1_men"
+            
+            if table_name:
                 key_tuple = tuple(sorted(red_men_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
         
-        # Mixed Piece Scenarios
+        # Mixed Pieces
         else:
-            # Each case must ensure all king/men lists are sorted
-            if r_kings == 3 and r_men == 0 and w_kings == 1 and w_men == 1:
+            # New 4-piece DB: 2 Kings vs 1 King, 1 Man
+            if r_kings == 2 and w_kings == 1 and r_men == 0 and w_men == 1:
+                table_name = "db_2kv1k1m"
+                key_tuple = tuple(sorted(red_king_pos)) + (white_king_pos[0], white_men_pos[0], turn_char)
+            elif w_kings == 2 and r_kings == 1 and w_men == 0 and r_men == 1:
+                table_name = "db_2kv1k1m"
+                # Canonical key for DB assumes Red is the majority player
+                key_tuple = tuple(sorted(white_king_pos)) + (red_king_pos[0], red_men_pos[0], turn_char)
+
+            # New 4-piece DB: 3 Men vs 1 King
+            elif r_men == 3 and w_kings == 1 and r_kings == 0 and w_men == 0:
+                table_name = "db_3mv1k"
+                key_tuple = tuple(sorted(red_men_pos)) + (white_king_pos[0], turn_char)
+            elif w_men == 3 and r_kings == 1 and w_kings == 0 and r_men == 0:
+                table_name = "db_3mv1k"
+                # Canonical key for DB assumes Red is the majority player
+                key_tuple = tuple(sorted(white_men_pos)) + (red_king_pos[0], turn_char)
+            
+            # Existing 5-piece databases
+            elif r_kings == 3 and w_kings == 1 and r_men == 0 and w_men == 1:
                 table_name = "db_3kv1k1m"
-                key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(white_king_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
-            elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 0:
+                key_tuple = tuple(sorted(red_king_pos)) + (white_king_pos[0], white_men_pos[0], turn_char)
+            elif r_kings == 2 and w_kings == 2 and r_men == 1 and w_men == 0:
                 table_name = "db_2k1m_vs_2k"
-                key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(red_men_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
-            elif r_kings == 2 and r_men == 1 and w_kings == 3 and w_men == 0:
-                table_name = "db_2k1m_vs_3k"
-                key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(red_men_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
-            elif r_kings == 3 and r_men == 1 and w_kings == 3 and w_men == 0:
-                table_name = "db_3k1m_vs_3k"
-                key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(red_men_pos)) + tuple(sorted(white_king_pos)) + (turn_char,)
+                key_tuple = tuple(sorted(red_king_pos)) + (red_men_pos[0],) + tuple(sorted(white_king_pos)) + (turn_char,)
+            # Re-enabling 6-piece lookup
             elif r_kings == 2 and r_men == 1 and w_kings == 2 and w_men == 1:
                 table_name = "db_2k1m_vs_2k1m"
-                key_tuple = tuple(sorted(red_king_pos)) + tuple(sorted(red_men_pos)) + tuple(sorted(white_king_pos)) + tuple(sorted(white_men_pos)) + (turn_char,)
+                key_tuple = tuple(sorted(red_king_pos)) + (red_men_pos[0],) + tuple(sorted(white_king_pos)) + (white_men_pos[0], turn_char)
 
-        if table_name is None:
-            return None, None
-
-       # key_string = str(key_tuple)
-        
-        logger.debug(f"DB_KEY_GEN: Match found! Table='{table_name}', Key='{key_tuple}'")
-        return table_name, key_tuple
+        if table_name:
+            return table_name, key_tuple
+        return None, None

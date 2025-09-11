@@ -13,7 +13,7 @@ from .constants import SQUARE_SIZE, RED, WHITE, BOARD_SIZE, ROWS, COLS, DEFAULT_
 import engine.constants as constants
 from game_states import Button
 from engine.search import get_ai_move_analysis
-from engine.evaluation import evaluate_board
+from engine.evaluation import evaluate_board_v1
 
 logger = logging.getLogger('gui')
 
@@ -147,9 +147,10 @@ class CheckersGame:
     def run_ai_calculation(self, board_instance, color_to_move):
         try:
             logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
-            best_move, top_moves = get_ai_move_analysis(board_instance, self.ai_depth, color_to_move, evaluate_board)
+            # --- FIX: Pass the specific, stable evaluation function to the search ---
+            best_move, top_moves = get_ai_move_analysis(board_instance, self.ai_depth, color_to_move, evaluate_board_v1)
             self.ai_move_queue.put({'best': best_move, 'top': top_moves})
-            #logger.info("AI_THREAD: Calculation finished normally. Move placed in queue.")
+            logger.info("AI_THREAD: Calculation finished. Move placed in queue.")
         except Exception as e:
             logger.error(f"AI_THREAD: CRITICAL ERROR during calculation: {e}", exc_info=True)
             self.ai_move_queue.put({'best': None, 'top': []})

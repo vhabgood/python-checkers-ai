@@ -87,18 +87,19 @@ class LoadingScreen:
 
 class PlayerSelectionScreen(BaseState):
     def __init__(self, screen):
-        super().__init__(screen)
-        self.next_state = "loading" 
+        super().__init__(screen) 
         self.player_choice = None
         self.selection_made = False # Flag to prevent double-clicks
         self.buttons = [
             Button('Play as Red', (WIDTH/2 - 100, 200), (200, 50), lambda: self.select_player(RED)),
-            Button('Play as White', (WIDTH/2 - 100, 270), (200, 50), lambda: self.select_player(WHITE))
+            Button('Play as White', (WIDTH/2 - 100, 270), (200, 50), lambda: self.select_player(WHITE)),
+            Button('Engine vs. Engine', (WIDTH/2 - 100, 340), (200, 50), self.start_engine_match) # <-- New button
         ]
         logger.info("PlayerSelectionScreen initialized.")
 
     def select_player(self, color):
         """Callback function for the buttons."""
+        self.next_state = "loading"
         player_color_name = PLAYER_NAMES.get(color)
         self.player_choice = player_color_name.lower()
         self.done = True
@@ -136,3 +137,7 @@ class PlayerSelectionScreen(BaseState):
         self.player_choice = None
         self.selection_made = False # <-- Reset the flag here
 
+    def start_engine_match(self): # <-- New callback for the button
+        """Callback to start the engine vs engine match."""
+        self.next_state = "engine_match"
+        self.done = True
