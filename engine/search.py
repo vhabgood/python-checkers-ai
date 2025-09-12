@@ -83,12 +83,20 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
 
     if not all_moves:
         return evaluate_func(board), []
+        
+    # --- NEW: Define a bonus for simplifying into a database win ---
+    PATH_TO_VICTORY_BONUS = 50.0   
 
     if maximizing_player:
         max_eval = float('-inf')
         for path in all_moves:
             move_board = board.apply_move(path)
             evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
+            
+            # If the recursive search found a database win, apply a huge bonus
+            if evaluation > 900: # Score indicates a database win
+                evaluation += PATH_TO_VICTORY_BONUS
+
             if evaluation > max_eval:
                 max_eval = evaluation
                 best_move_sequence = [path] + subsequent_sequence
@@ -100,6 +108,11 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         for path in all_moves:
             move_board = board.apply_move(path)
             evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
+
+            # If the recursive search found a database loss, apply a huge penalty
+            if evaluation < -900: # Score indicates a database loss
+                evaluation -= PATH_TO_VICTORY_BONUS
+
             if evaluation < min_eval:
                 min_eval = evaluation
                 best_move_sequence = [path] + subsequent_sequence

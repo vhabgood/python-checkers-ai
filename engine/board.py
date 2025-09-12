@@ -17,6 +17,53 @@ class Board:
         self.db_conn = db_conn
         self.create_board()
 
+    def create_board_from_fen(self, fen_string):
+        """
+        Clears the board and sets up a new position from a FEN string.
+        Format: "Turn:WhitePieces:RedPieces" e.g., "W:W21,K22:B1,2,K3"
+        """
+        self.board = []
+        self.red_left = self.white_left = 0
+        self.red_kings = self.white_kings = 0
+        
+        for _ in range(ROWS):
+            self.board.append([0] * COLS)
+
+        parts = fen_string.split(':')
+        if len(parts) != 3:
+            logger.error(f"Invalid FEN string: {fen_string}")
+            self.create_board() # Revert to default
+            return
+
+        turn_char, white_pieces_str, red_pieces_str = parts
+
+        self.turn = WHITE if turn_char.upper() == 'W' else RED
+
+    def place_pieces(piece_str, color):
+            if not piece_str: return
+            for p in piece_str.split(','):
+                p = p.strip()
+                is_king = p.upper().startswith('K')
+                try:
+                    square_num = int(re.sub(r'\D', '', p))
+                    row, col = ACF_TO_COORD[square_num]
+                    
+                    piece = Piece(row, col, color)
+                    if is_king:
+                        piece.make_king()
+                        if color == WHITE: self.white_kings += 1
+                        else: self.red_kings += 1
+                    
+                    self.board[row][col] = piece
+                    if color == WHITE: self.white_left += 1
+                    else: self.red_left += 1
+
+                except (ValueError, KeyError) as e:
+                    logger.error(f"Invalid piece in FEN string: '{p}' in '{fen_string}' - {e}")
+        
+            place_pieces(white_pieces_str[1:], WHITE) # Skip the 'W'
+            place_pieces(red_pieces_str[1:], RED)   # Skip the 'B' or 'R'
+
     def __deepcopy__(self, memo):
         new_board = Board(db_conn=self.db_conn)
         memo[id(self)] = new_board
