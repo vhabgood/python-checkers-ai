@@ -64,15 +64,13 @@ def quiescence_search(board, alpha, beta, maximizing_player, evaluate_func):
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The main search function. When it reaches its depth limit, it calls
-    the quiescence search to get a stable evaluation.
+    The main search function. Now includes a "Path to Victory" bonus to
+    encourage simplifying into a won endgame database position.
     """
     if board.winner() is not None:
-        # Favor quicker wins and delayed losses
         score = evaluate_func(board)
         return (score - depth) if score > 0 else (score + depth), []
         
-    # Hand off to quiescence search at the depth limit
     if depth == 0:
         return quiescence_search(board, alpha, beta, maximizing_player, evaluate_func)
 
@@ -80,26 +78,18 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     best_move_sequence = []
     
     all_moves = board.get_all_move_sequences(color_to_move)
-
     if not all_moves:
         return evaluate_func(board), []
-        
-    # --- NEW: Define a bonus for simplifying into a database win ---
-    PATH_TO_VICTORY_BONUS = 50.0   
+
+    PATH_TO_VICTORY_BONUS = 50.0 
 
     if maximizing_player:
         max_eval = float('-inf')
         for path in all_moves:
             move_board = board.apply_move(path)
             evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
-            
-            # If the recursive search found a database win, apply a huge bonus
-            if evaluation > 900: # Score indicates a database win
-                evaluation += PATH_TO_VICTORY_BONUS
-
-            if evaluation > max_eval:
-                max_eval = evaluation
-                best_move_sequence = [path] + subsequent_sequence
+            if evaluation > 900: evaluation += PATH_TO_VICTORY_BONUS
+            if evaluation > max_eval: max_eval = evaluation; best_move_sequence = [path] + subsequent_sequence
             alpha = max(alpha, evaluation)
             if beta <= alpha: break
         return max_eval, best_move_sequence
@@ -108,14 +98,8 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         for path in all_moves:
             move_board = board.apply_move(path)
             evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
-
-            # If the recursive search found a database loss, apply a huge penalty
-            if evaluation < -900: # Score indicates a database loss
-                evaluation -= PATH_TO_VICTORY_BONUS
-
-            if evaluation < min_eval:
-                min_eval = evaluation
-                best_move_sequence = [path] + subsequent_sequence
+            if evaluation < -900: evaluation -= PATH_TO_VICTORY_BONUS
+            if evaluation < min_eval: min_eval = evaluation; best_move_sequence = [path] + subsequent_sequence
             beta = min(beta, evaluation)
             if beta <= alpha: break
         return min_eval, best_move_sequence
@@ -125,30 +109,62 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
 # --- 3. Top-Level AI Interface ---
 # ======================================================================================
 
-def get_ai_move_analysis(board, depth, color_to_move, evaluate_func):
+def get_ai_move_analysis(board, max_depth, color_to_move, evaluate_func):
     """
-    Initiates the AI's thinking process. (This function remains the same).
+    Initiates the AI's thinking process using iterative deepening and aspiration windows.
     """
     is_maximizing = color_to_move == WHITE
-    
     possible_moves = list(board.get_all_move_sequences(color_to_move))
-
     if not possible_moves: return None, []
 
-    all_scored_moves = []
-    for move_path in possible_moves:
-        move_board = board.apply_move(move_path)
-        score, subsequent_sequence = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
-        full_sequence_for_display = [move_path] + subsequent_sequence
-        all_scored_moves.append((score, full_sequence_for_display, move_path))
-
-    if not all_scored_moves: return None, []
-
-    all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
+    # Start with a random best move in case the search is interrupted.
+    best_move_path = possible_moves[0]
+    best_sequence = []
     
-    best_path_for_execution = all_scored_moves[0][2]
-    top_5_for_display = [(score, seq) for score, seq, _ in all_scored_moves[:5]]
+    # Define the initial aspiration window size.
+    ASPIRATION_WINDOW_DELTA = 0.25
     
-    return best_path_for_execution, top_5_for_display
+    # Iterative deepening loop
+    last_score = 0
+    for depth in range(1, max_depth + 1):
+        
+        # --- Aspiration Window Logic ---
+        alpha = last_score - ASPIRATION_WINDOW_DELTA
+        beta = last_score + ASPIRATION_WINDOW_DELTA
+        
+        all_scored_moves = []
+        
+        # We must still search all root moves
+        for move_path in possible_moves:
+            move_board = board.apply_move(move_path)
+            
+            # Search with the narrow window first
+            score, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, not is_maximizing, evaluate_func)
+            
+            # --- Handle Aspiration Search Failures ---
+            # If the score is outside our window, we must re-search with a wider window.
+            if score <= alpha or score >= beta:
+                logger.warning(f"Aspiration search failed at depth {depth}. (Score: {score}, Window: [{alpha:.2f}, {beta:.2f}]). Re-searching.")
+                # Re-search with a full window
+                score, subsequent_sequence = minimax(move_board, depth - 1, float('-inf'), float('inf'), not is_maximizing, evaluate_func)
 
+            all_scored_moves.append((score, [move_path] + subsequent_sequence, move_path))
+
+        if not all_scored_moves: break # No moves found, stop deepening
+
+        # Sort moves based on the latest search results
+        all_scored_moves.sort(key=lambda x: x[0], reverse=is_maximizing)
+        
+        # Update the best move found so far
+        best_path_for_execution = all_scored_moves[0][2]
+        best_sequence_for_display = all_scored_moves[0][1]
+        last_score = all_scored_moves[0][0]
+        
+        # For the final report, we only care about the results from the max depth
+        if depth == max_depth:
+            top_5_for_display = [(score, seq) for score, seq, _ in all_scored_moves[:5]]
+            return best_path_for_execution, top_5_for_display
+
+    # Fallback in case loop finishes unexpectedly
+    return best_move_path, [(last_score, best_sequence)]
 

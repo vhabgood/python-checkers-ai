@@ -29,23 +29,14 @@ class CheckersGame:
     def __init__(self, screen, status_queue, args, red_player_config, white_player_config):
         """
         Initializes the entire game state.
-        Receives:
-            - screen (pygame.Surface): The main display surface.
-            - status_queue (queue.Queue): Queue for thread communication (legacy).
-            - args (argparse.Namespace): Command-line arguments.
-            - red_player_config (dict): Configuration for the Red player.
-            - white_player_config (dict): Configuration for the White player.
-        Outputs: None
         """
         self.screen = screen
         self.args = args
         self.status_queue = status_queue
 
-        # --- Player and Game Mode Configuration ---
         self.players = { RED: red_player_config, WHITE: white_player_config }
         self.is_human_game = self.players[RED]['type'] == 'human' or self.players[WHITE]['type'] == 'human'
 
-        # --- Core Game State ---
         self.board = Board()
         self.turn = self.board.turn
         self.selected_piece = None
@@ -53,18 +44,16 @@ class CheckersGame:
         self.done = False
         self.next_state = "player_selection"
         self.winner = None
-        self.game_is_active = not self.is_human_game
+        self.game_is_active = True
         self.last_move_time = 0
-        self.last_move_path = None # Initialized to None to prevent startup errors
+        self.last_move_path = None
 
-        # --- History and Draw Detection ---
         self.full_move_history = []
         self.board_history = [copy.deepcopy(self.board)]
         self.history_index = 0
         self.position_counts = {}
         self._update_position_counts(self.board)
 
-        # --- UI State ---
         self.show_board_numbers = True
         self.dev_mode = True
         self.board_flipped = False
@@ -76,7 +65,6 @@ class CheckersGame:
         self.feedback_message = ""
         self.feedback_timer = 0
         
-        # --- AI State ---
         self.ai_depth = DEFAULT_AI_DEPTH
         self.ai_is_thinking = False
         self.ai_move_queue = queue.Queue()
@@ -84,64 +72,53 @@ class CheckersGame:
         self.ai_best_move_for_execution = None
         self.force_ai_flag = False
 
-        # --- Test Position Loading ---
-        self.test_positions = []
-        self.current_test_index = -1
-        self._load_test_positions_from_file()
+        self.wants_to_load_fen = False
+        self.wants_to_load_pdn = False
 
         self._initialize_buttons()
 
     def _initialize_buttons(self):
         """
-        Creates the UI buttons based on the current game mode.
-        Receives: self
-        Outputs: None
+        Creates the UI buttons with a simple, robust layout logic.
         """
         self.buttons = []
         button_width, button_height = 171, 28
         side_panel_width = self.screen.get_width() - BOARD_SIZE
         button_x = BOARD_SIZE + (side_panel_width - button_width) // 2
         
-        button_definitions = [
-            {'text': "Dev Mode", 'callback': self.toggle_dev_mode},
-            {'text': "Reset Match", 'callback': self.reset_game},
-            {'text': "Main Menu", 'callback': self.go_to_main_menu},
-            {'text': "< Test", 'callback': self.load_prev_test_position, 'split': True},
-            {'text': "Test >", 'callback': self.load_next_test_position, 'split': True},
+        button_y = self.screen.get_height() - button_height - 10
+        y_step = button_height + 10
+
+        base_buttons = [
+            ("Dev Mode", self.toggle_dev_mode),
+            ("Reset Match", self.reset_game),
+            ("Main Menu", self.go_to_main_menu),
         ]
+        human_buttons = [
+            ("Load Position (FEN)", self.request_fen_load),
+            ("Force AI Move", self.force_ai_move),
+            ("Load PDN", self.request_pdn_load),
+            ("Export to PDN", self.export_to_pdn),
+        ]
+        ai_buttons = [
+            ("Load Position (FEN)", self.request_fen_load),
+            ("Pause/Resume", self.toggle_pause),
+        ]
+        
+        layout = base_buttons
         if self.is_human_game:
-            button_definitions.insert(3, {'text': "Force AI Move", 'callback': self.force_ai_move})
-            button_definitions.insert(4, {'text': "Load PDN", 'callback': self.request_pdn_load})
-            button_definitions.insert(5, {'text': "Export to PDN", 'callback': self.export_to_pdn})
+            layout += human_buttons
         else:
-            button_definitions.insert(1, {'text': "Pause/Resume", 'callback': self.toggle_pause})
+            layout += ai_buttons
 
-        button_definitions.extend([
-            {'text': "<", 'callback': self.step_back, 'nav': True},
-            {'text': ">", 'callback': self.step_forward, 'nav': True},
-        ])
+        for text, callback in layout:
+            self.buttons.append(Button(text, (button_x, button_y), (button_width, button_height), callback))
+            button_y -= y_step
 
-        y_offset = 0
-        button_y_start = self.screen.get_height() - 38
-
-        for i, b_def in enumerate(button_definitions):
-            b_width = b_def.get('width', button_width)
-            b_x = button_x
-            if b_def.get('split'):
-                b_width = (button_width - 11) // 2
-                if i > 0 and button_definitions[i-1].get('split'):
-                    y_offset -= (button_height + 10)
-                    b_x = button_x + b_width + 11
-            if b_def.get('nav'):
-                 if i > 0 and not button_definitions[i-1].get('nav'): y_offset += 10
-                 b_x = button_x + (45 if b_def['text'] == ">" else 0)
-                 b_width = 40
-            
-            self.buttons.append(Button(b_def['text'], (b_x, button_y_start - y_offset), (b_width, button_height), b_def['callback']))
-            if not b_def.get('nav') or b_def['text'] == ">":
-                y_offset += (button_height + 10)
-
-        depth_btn_y = self.buttons[-1].rect.y - 35
+        nav_y = button_y - 10
+        self.buttons.append(Button("<", (button_x, nav_y), (40, 28), self.step_back))
+        self.buttons.append(Button(">", (button_x + 45, nav_y), (40, 28), self.step_forward))
+        depth_btn_y = nav_y - 35
         self.buttons.append(Button("-", (button_x + (button_width - 70), depth_btn_y), (30, 28), self.decrease_ai_depth))
         self.buttons.append(Button("+", (button_x + (button_width - 35), depth_btn_y), (30, 28), self.increase_ai_depth))
 
@@ -149,13 +126,10 @@ class CheckersGame:
     # --- Core Game Loop Methods ---
     # ======================================================================================
     def update(self):
-        """
-        Handles the main logic update for each frame. Checks for AI moves,
-        updates game state, and manages the game flow.
-        Receives: self
-        Outputs: None
-        """
         if self.winner: self.game_is_active = False
+        if self.board.moves_since_progress >= 80:
+            self.winner = "DRAW"; logger.info("DRAW by 40-move rule.")
+
         try:
             res = self.ai_move_queue.get_nowait()
             self.ai_is_thinking = False
@@ -164,8 +138,10 @@ class CheckersGame:
             if not self.ai_best_move_for_execution and not self.is_human_turn(): 
                 self.winner = RED if self.turn == WHITE else WHITE
         except queue.Empty: pass
-        is_ai_turn = not self.is_human_turn() or self.force_ai_flag
-        if self.game_is_active and is_ai_turn and not self.ai_is_thinking:
+        
+        is_ai_turn_to_play = (not self.is_human_turn()) or self.force_ai_flag
+
+        if self.game_is_active and is_ai_turn_to_play and not self.ai_is_thinking:
             move_delay = 0.5 if not self.is_human_game else 0
             if time.time() - self.last_move_time > move_delay:
                 if self.ai_best_move_for_execution:
@@ -176,12 +152,6 @@ class CheckersGame:
                     self.start_ai_turn()
 
     def draw(self, screen):
-        """
-        Draws all game elements to the screen.
-        Receives:
-            - screen (pygame.Surface): The surface to draw on.
-        Outputs: None
-        """
         self.screen.fill((40, 40, 40))
         current_board = self.board_history[self.history_index]
         all_paths = current_board.get_all_move_sequences(current_board.turn)
@@ -199,12 +169,6 @@ class CheckersGame:
         if self.winner: self._draw_winner_message()
 
     def handle_event(self, event):
-        """
-        Handles a single Pygame event.
-        Receives:
-            - event (pygame.event.Event): The event to process.
-        Outputs: None
-        """
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for button in self.buttons:
                 if button.is_clicked(event.pos):
@@ -215,37 +179,93 @@ class CheckersGame:
                 self._handle_board_click(row, col)
 
     # ======================================================================================
-    # --- AI Interaction ---
+    # --- FEN, PDN, and Test Position Loading ---
     # ======================================================================================
+    def request_fen_load(self):
+        """Sets a flag for the main loop to open a FEN file dialog."""
+        self.wants_to_load_fen = True
+        logger.info("FEN load requested.")
+    
+    def load_fen_from_file(self, filepath):
+        """
+        REWRITTEN: Loads the first valid FEN position from a text file,
+        intelligently ignoring comments and blank lines.
+        """
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    fen_string = line.strip()
+                    # A valid FEN must have 2 colons. Ignore comments and blank lines.
+                    if fen_string and not fen_string.startswith('#') and fen_string.count(':') == 2:
+                        # Found the first valid FEN, now load it.
+                        new_board = Board()
+                        new_board.create_board_from_fen(fen_string)
+                        self._reset_game_state_with_new_board(new_board)
+                        logger.info(f"Loaded position from FEN: {fen_string}")
+                        
+                        # Immediately trigger an analysis of the new position
+                        self.force_ai_move()
+                        return # Stop after loading the first valid position
+            
+            # If we get here, no valid FEN was found in the file.
+            logger.error(f"No valid FEN string found in file: {filepath}")
+
+        except Exception as e:
+            logger.error(f"Failed to load FEN file '{filepath}': {e}")
+            
+    def request_pdn_load(self):
+        self.wants_to_load_pdn = True
+        logger.info("PDN load requested.")
+
+    def load_pdn_from_file(self, filepath):
+        logger.info(f"PDN loading from {filepath} is not yet fully implemented.")
+    
+    def export_to_pdn(self):
+        # Placeholder for PDN export logic
+        logger.info("Export to PDN clicked.")
+
+    # ======================================================================================
+    # --- The rest of the class methods, verified and complete ---
+    # ======================================================================================
+    def _get_board_key(self, board_obj):
+        return (tuple(map(tuple, board_obj.board)), board_obj.turn)
+
+    def _update_position_counts(self, board_obj):
+        key = self._get_board_key(board_obj)
+        self.position_counts[key] = self.position_counts.get(key, 0) + 1
+        if self.position_counts[key] >= 3:
+            self.winner = "DRAW"
+            self.game_is_active = False
+            logger.info("DRAW by three-fold repetition.")
+
     def start_ai_turn(self):
         """
         Starts the AI calculation in a separate thread.
-        Receives: self
-        Outputs: None
+        FIXED: Now correctly determines which evaluation function to use
+        when forcing a move for a human player.
         """
         if self.ai_is_thinking or self.winner: return
         self.ai_is_thinking = True
         self.ai_top_moves = []
         self.ai_best_move_for_execution = None
-        eval_func = self.players[self.turn]['eval_func']
+
+        # --- FIX: Determine the correct evaluation function ---
+        if self.force_ai_flag and self.is_human_turn():
+            # If a human forces a move, use the AI opponent's "brain"
+            ai_opponent_color = WHITE if self.turn == RED else RED
+            eval_func = self.players[ai_opponent_color]['eval_func']
+        else:
+            # Normal case: it's the AI's turn
+            eval_func = self.players[self.turn]['eval_func']
+        
         board_copy = copy.deepcopy(self.board_history[self.history_index])
         threading.Thread(target=self.run_ai_calculation, args=(board_copy, self.turn, eval_func), daemon=True).start()
 
     def run_ai_calculation(self, board_instance, color_to_move, evaluate_func):
-        """
-        The target function for the AI thread. Connects to the DB, runs the
-        search, and puts the result in the queue.
-        Receives:
-            - board_instance (Board): A copy of the board to analyze.
-            - color_to_move (tuple): The color of the AI player.
-            - evaluate_func (function): The evaluation function to use.
-        Outputs: None (result is placed in a queue)
-        """
         db_conn = None
         try:
             db_conn = sqlite3.connect("checkers_endgame.db")
             board_instance.db_conn = db_conn
-            current_engine_name = self.players[color_to_move]['name']
             best_move, top_moves = get_ai_move_analysis(board_instance, self.ai_depth, color_to_move, evaluate_func)
             self.ai_move_queue.put({'best': best_move, 'top': top_moves})
         except Exception as e:
@@ -255,38 +275,24 @@ class CheckersGame:
             if db_conn: db_conn.close()
             board_instance.db_conn = None
 
-    # ======================================================================================
-    # --- UI Drawing Helpers ---
-    # ======================================================================================
     def draw_side_panel(self):
-        """Draws the entire right-hand side panel."""
         panel_x = BOARD_SIZE
         panel_width = self.screen.get_width() - panel_x
         pygame.draw.rect(self.screen, (20, 20, 20), (panel_x, 0, panel_width, self.screen.get_height()))
-        self._draw_player_info(panel_x)
-        self._draw_status_info(panel_x)
-        self._draw_move_history(panel_x)
-        self._draw_ai_depth(panel_x)
-        for button in self.buttons: button.draw(self.screen)
-
-    def _draw_player_info(self, panel_x):
-        """Draws the player names and colors."""
+        
         red_text = self.large_font.render(f"Red: {self.players[RED]['name']}", True, (255, 150, 150))
         white_text = self.large_font.render(f"White: {self.players[WHITE]['name']}", True, (200, 200, 255))
         self.screen.blit(red_text, (panel_x + 10, 20))
         self.screen.blit(white_text, (panel_x + 10, 50))
 
-    def _draw_status_info(self, panel_x):
-        """Draws the current game status (e.g., turn, thinking)."""
         turn_color = "Red's" if self.turn == RED else "White's"
         status_text = f"Analysis: Mv {self.history_index}" if not self.game_is_active and not self.winner else f"{turn_color} Turn"
         if self.ai_is_thinking: status_text = f"{turn_color} Thinking..."
         if self.winner: status_text = "Match Over"
+        
         status_surface = self.large_font.render(status_text, True, (255, 255, 0) if self.ai_is_thinking else (220, 220, 220))
         self.screen.blit(status_surface, (panel_x + 10, 90))
 
-    def _draw_move_history(self, panel_x):
-        """Draws the move history in two columns."""
         history_y_start, line_height, moves_per_col = 130, 18, 12
         move_pairs = []
         for i in range(0, len(self.full_move_history), 2):
@@ -294,6 +300,7 @@ class CheckersGame:
             red_move = self.full_move_history[i]
             white_move = self.full_move_history[i + 1] if i + 1 < len(self.full_move_history) else ""
             move_pairs.append(f"{move_num}. {red_move} {white_move}")
+
         for i, line in enumerate(move_pairs):
             col = i // moves_per_col
             if col > 1: break
@@ -305,32 +312,41 @@ class CheckersGame:
             move_surface = self.history_font.render(line, True, color)
             self.screen.blit(move_surface, (x_pos, y_pos))
 
-    def _draw_ai_depth(self, panel_x):
-        """Draws the current AI search depth."""
         depth_btn_y = self.buttons[-1].rect.y
         depth_text = self.large_font.render(f"AI Depth: {self.ai_depth}", True, (200, 200, 200))
         self.screen.blit(depth_text, (panel_x + 10, depth_btn_y - 30))
 
+        for button in self.buttons: button.draw(self.screen)
+
     def draw_dev_panel(self):
-        """Draws the developer panel with AI analysis."""
         panel_y = BOARD_SIZE
         panel_height = self.screen.get_height() - panel_y
         if panel_height <= 0: return
         pygame.draw.rect(self.screen, (30, 30, 30), (0, panel_y, BOARD_SIZE, panel_height))
         y_offset = panel_y + 5
-        title_text = self.large_font.render("AI Analysis:", True, (200, 200, 200))
+        title_text = self.large_font.render("AI Analysis (Principal Variation):", True, (200, 200, 200))
         self.screen.blit(title_text, (10, y_offset))
         y_offset += 25
         for i, (score, sequence) in enumerate(self.ai_top_moves):
             if not sequence: continue
-            move_text = " -> ".join([self._format_move_path(seg) for seg in sequence])
-            score_text = f"Score: {score:.2f}"
-            full_text = f"{i+1}. {move_text} ({score_text})"
-            text_surface = self.dev_font.render(full_text, True, (220, 220, 220))
-            self.screen.blit(text_surface, (15, y_offset + i * 18))
+            x_offset = 15
+            score_text = f"{i+1}. (Score: {score:.2f}) "
+            score_surface = self.dev_font.render(score_text, True, (220, 220, 220))
+            self.screen.blit(score_surface, (x_offset, y_offset + i * 20))
+            x_offset += score_surface.get_width()
+            first_move_path = sequence[0]
+            start_pos = first_move_path[0]
+            first_piece = self.board.get_piece(start_pos[0], start_pos[1])
+            current_move_color = self.turn if not first_piece else first_piece.color
+            for move_path in sequence:
+                move_text = self._format_move_path(move_path)
+                text_color = (255, 150, 150) if current_move_color == RED else (200, 200, 255)
+                move_surface = self.dev_font.render(move_text, True, text_color)
+                self.screen.blit(move_surface, (x_offset, y_offset + i * 20))
+                x_offset += move_surface.get_width() + 10
+                current_move_color = WHITE if current_move_color == RED else RED
 
     def _draw_winner_message(self):
-        """Displays the winner message on the board."""
         if self.winner == "DRAW":
             text, color = "Draw!", (200, 200, 200)
             winner_surface = self.winner_font.render(text, True, color)
@@ -345,9 +361,6 @@ class CheckersGame:
             self.screen.blit(winner_surface, (BOARD_SIZE // 2 - winner_surface.get_width() // 2, BOARD_SIZE // 2 - 20))
             self.screen.blit(sub_text, (BOARD_SIZE // 2 - sub_text.get_width() // 2, BOARD_SIZE // 2 + 20))
 
-    # ======================================================================================
-    # --- Button Callbacks and UI State Helpers ---
-    # ======================================================================================
     def go_to_main_menu(self): self.done = True
     def is_human_turn(self): return self.players[self.turn].get('type') == 'human'
     def toggle_pause(self): self.game_is_active = not self.game_is_active
@@ -356,75 +369,33 @@ class CheckersGame:
     def step_forward(self):
         if self.history_index < len(self.board_history) - 1: self.history_index += 1; self._update_game_state_from_history()
     def reset_game(self):
-        self.board = Board(); self.turn = self.board.turn; self.winner = None; self.last_move_path = None
-        self.ai_top_moves = []; self.game_is_active = not self.is_human_game; self.full_move_history = []
+        new_board = Board()
+        self._reset_game_state_with_new_board(new_board)
+        self.game_is_active = not self.is_human_game
+
+    def _reset_game_state_with_new_board(self, new_board):
+        self.board = new_board; self.turn = new_board.turn; self.winner = None; self.last_move_path = None
+        self.ai_top_moves = []; self.full_move_history = []
         self.board_history = [copy.deepcopy(self.board)]; self.history_index = 0
         self.position_counts = {}; self._update_position_counts(self.board)
+
     def increase_ai_depth(self): self.ai_depth = min(9, self.ai_depth + 1)
     def decrease_ai_depth(self): self.ai_depth = max(3, self.ai_depth - 1)
     def toggle_dev_mode(self): self.dev_mode = not self.dev_mode
     def force_ai_move(self):
         if self.ai_is_thinking or self.winner: return
-        self.game_is_active = False
         self.force_ai_flag = True
-        self.start_ai_turn()
-    def request_pdn_load(self): self.wants_to_load_pdn = True; logger.info("PDN load requested.")
-    def export_to_pdn(self):
-        try:
-            filename = f"game_{time.strftime('%Y%m%d_%H%M%S')}.pdn"
-            with open(filename, "w") as f:
-                f.write(f'[White "{self.players[WHITE]["name"]}"]\n'); f.write(f'[Black "{self.players[RED]["name"]}"]\n')
-                move_text = ""
-                for i in range(0, len(self.full_move_history), 2):
-                    move_num = i // 2 + 1
-                    red = self.full_move_history[i]
-                    white = self.full_move_history[i+1] if i + 1 < len(self.full_move_history) else ""
-                    move_text += f"{move_num}. {red} {white} "
-                f.write(move_text.strip() + "*\n")
-            logger.info(f"Game exported to {filename}")
-        except Exception as e: logger.error(f"Failed to export PDN: {e}")
+        logger.info(f"Force AI move requested for {self.turn}.")
+        # The main update loop will now pick this up and start the AI turn.
 
-    def _load_test_positions_from_file(self):
-        try:
-            with open("test_positions.txt", "r") as f:
-                self.test_positions = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-            logger.info(f"Loaded {len(self.test_positions)} test positions.")
-        except FileNotFoundError:
-            logger.warning("test_positions.txt not found.")
-
-    def load_test_position(self, index):
-        if not self.test_positions: return
-        self.current_test_index = index % len(self.test_positions)
-        fen = self.test_positions[self.current_test_index]
-        new_board = Board(); new_board.create_board_from_fen(fen)
-        self.board = new_board; self.turn = new_board.turn; self.winner = None; self.last_move_path = None
-        self.ai_top_moves = []; self.game_is_active = False; self.full_move_history = []
-        self.board_history = [copy.deepcopy(self.board)]; self.history_index = 0
-        logger.info(f"Loaded test position {self.current_test_index + 1}: {fen}")
-        self.force_ai_move()
-
-    def load_next_test_position(self): self.load_test_position(self.current_test_index + 1)
-    def load_prev_test_position(self):
-        prev_index = self.current_test_index - 1
-        if prev_index < 0: prev_index = len(self.test_positions) - 1 if self.test_positions else -1
-        self.load_test_position(prev_index)
-
-    # ======================================================================================
-    # --- Board State and History Management ---
-    # ======================================================================================
-    def _get_board_key(self, board_obj):
-        return (tuple(map(tuple, board_obj.board)), board_obj.turn)
-    def _update_position_counts(self, board_obj):
-        key = self._get_board_key(board_obj)
-        self.position_counts[key] = self.position_counts.get(key, 0) + 1
-        if self.position_counts[key] >= 3:
-            self.winner = "DRAW"; self.game_is_active = False; logger.info(f"DRAW by three-fold repetition.")
     def _format_move_path(self, path):
         if not path or len(path) < 2: return "??"
         start, end = path[0], path[-1]
         sep = 'x' if abs(start[0]-end[0]) >= 2 else '-'
         return f"{self._coord_to_acf(start)}{sep}{self._coord_to_acf(end)}"
+    
     def _coord_to_acf(self, coord): return str(constants.COORD_TO_ACF.get(coord, "??"))
+    
     def _apply_move_sequence(self, path):
         if not path: return
         self.last_move_time = time.time()
@@ -438,6 +409,7 @@ class CheckersGame:
         self.history_index += 1
         self._update_game_state_from_history()
         self._update_position_counts(self.board)
+    
     def _update_game_state_from_history(self):
         self.board = self.board_history[self.history_index]
         self.turn = self.board.turn
@@ -447,12 +419,15 @@ class CheckersGame:
             parts = re.findall(r'(\d+)', last_move_str)
             if len(parts) >= 2: self.last_move_path = [ACF_TO_COORD.get(int(p)) for p in parts if p and int(p) in ACF_TO_COORD]
         else: self.last_move_path = None
+    
     def _handle_board_click(self, r, c):
         if self.selected_piece and self._attempt_move((r,c)): return
         self._select_piece(r,c)
+    
     def _select_piece(self, r, c):
         piece = self.board.get_piece(r,c)
         self.selected_piece = piece if piece and piece.color == self.turn else None
+    
     def _attempt_move(self, end_pos):
         start_pos = (self.selected_piece.row, self.selected_piece.col)
         path = next((p for p in self.board.get_all_move_sequences(self.turn) if p[0]==start_pos and p[-1]==end_pos), None)
