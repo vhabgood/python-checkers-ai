@@ -19,7 +19,7 @@ class HeadlessGame:
     A class to simulate a single game of checkers between two AI engines
     without any graphical user interface.
     """
-    def __init__(self, starting_fen, red_player_config, white_player_config, ai_depth=5):
+    def __init__(self, starting_fen, red_player_config, white_player_config, ai_depth=7):
         """
         Initializes the game from a FEN string.
         """
@@ -56,22 +56,15 @@ class HeadlessGame:
         db_conn = sqlite3.connect("checkers_endgame.db")
 
         while True:
-            # Check for terminal conditions
             winner = self.board.winner()
             if winner:
                 db_conn.close()
                 return self.players[winner]['name']
             
-            draw_by_repetition = self._update_position_counts(self.board)
-            if draw_by_repetition:
-                db_conn.close()
-                return "DRAW"
-                
-            if self.board.moves_since_progress >= 80:
+            if self._update_position_counts(self.board) or self.board.moves_since_progress >= 80:
                 db_conn.close()
                 return "DRAW"
 
-            # Get current player's configuration
             current_player_config = self.players[self.board.turn]
             eval_func = current_player_config['eval_func']
             
@@ -87,7 +80,7 @@ class HeadlessGame:
             
             self.board = self.board.apply_move(best_move)
         
-        db_conn.close() # Should be unreachable, but good practice
+        db_conn.close()
 
 
 def run_gauntlet():
@@ -96,6 +89,8 @@ def run_gauntlet():
     """
     logging.info("Starting Engine Gauntlet...")
 
+    # --- Configuration ---
+    GAUNTLET_AI_DEPTH = 5 # <-- The "Sweet Spot" Depth for testing
     v1_config = {'name': 'V1', 'eval_func': evaluate_board_v1}
     v2_config = {'name': 'V2', 'eval_func': evaluate_board_v2_experimental}
     fen_file = "test_positions.txt"
@@ -103,7 +98,6 @@ def run_gauntlet():
     
     try:
         with open(fen_file, "r") as f:
-            # --- FIX: Only read lines that contain colons, ignoring headers ---
             fens = [line.strip() for line in f if ':' in line and not line.startswith('#')]
         logging.info(f"Loaded {len(fens)} positions from '{fen_file}'.")
     except FileNotFoundError:
@@ -115,26 +109,20 @@ def run_gauntlet():
     total_games = len(fens) * 2
 
     for i, fen in enumerate(fens):
-        # Game 1: V2 is White, V1 is Red
         game_num = i * 2 + 1
         logging.info(f"--- Running Game {game_num}/{total_games} (V2 as White) ---")
-        logging.info(f"FEN: {fen}")
-        game1 = HeadlessGame(fen, red_player_config=v1_config, white_player_config=v2_config)
+        game1 = HeadlessGame(fen, v1_config, v2_config, GAUNTLET_AI_DEPTH)
         winner1 = game1.run()
         scores[winner1] += 1
-        if winner1 != 'DRAW':
-            winning_fens[winner1].append(fen)
+        if winner1 != 'DRAW': winning_fens[winner1].append(fen)
         logging.info(f"Result: {winner1} wins.")
 
-        # Game 2: V1 is White, V2 is Red
         game_num = i * 2 + 2
         logging.info(f"--- Running Game {game_num}/{total_games} (V1 as White) ---")
-        logging.info(f"FEN: {fen}")
-        game2 = HeadlessGame(fen, red_player_config=v2_config, white_player_config=v1_config)
+        game2 = HeadlessGame(fen, v2_config, v1_config, GAUNTLET_AI_DEPTH)
         winner2 = game2.run()
         scores[winner2] += 1
-        if winner2 != 'DRAW':
-            winning_fens[winner2].append(fen)
+        if winner2 != 'DRAW': winning_fens[winner2].append(fen)
         logging.info(f"Result: {winner2} wins.")
 
     logging.info("Gauntlet finished. Writing results...")
@@ -142,14 +130,10 @@ def run_gauntlet():
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         f.write(f"Gauntlet Results - {timestamp}\n")
         f.write("="*40 + "\n")
-        
-        score_string = f"Final Score: ({scores['V2']} - {scores['V1']} - {scores['DRAW']})\n"
-        f.write(score_string)
+        f.write(f"Final Score: ({scores['V2']} - {scores['V1']} - {scores['DRAW']})\n")
         f.write("="*40 + "\n\n")
-
         f.write(f"Positions where V2 (Experimental) Won ({len(winning_fens['V2'])}):\n")
         for w_fen in winning_fens['V2'] if winning_fens['V2'] else ["- None"]: f.write(f"- {w_fen}\n")
-        
         f.write("\n")
         f.write(f"Positions where V1 (Stable) Won ({len(winning_fens['V1'])}):\n")
         for w_fen in winning_fens['V1'] if winning_fens['V1'] else ["- None"]: f.write(f"- {w_fen}\n")

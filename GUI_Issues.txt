@@ -1,7 +1,0 @@
-2. Move History is no longer showing up. (Solved, however this one still may need to be made scrollable)
-3. Undo button is gone. (Solved)
-4. Reset button is gone. (Solved)
-5. Force AI move button is gone. (Soved)
-6. Export to PDN button gone. (Progress: if this does work, you would never know. it needs to say creating PDN and then file created "location/lsdf.txt")
-8. In Dev mode, the AI has already made its move and then it takes a few seconds before the information displays on the screen. Ideally, we want to be able to see that info as the AI is evaluating things in real-time. (Progress: Great info on the screen, not sure if we can make it display as the AI is thinking or not. We can come back to this.)
-

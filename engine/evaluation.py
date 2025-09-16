@@ -40,14 +40,14 @@ V1_CONFIG = {
     "MOBILITY_WEIGHT": 0.1
 }
 
-# V2 is the new challenger with a stronger focus on position and mobility.
+# V2 is the new challenger with a stronger focus on blockade and first king bonus
 V2_CONFIG = {
     "MATERIAL_WEIGHT": 10.0,
-    "POSITIONAL_WEIGHT": 0.30,  # <-- Doubled
-    "BLOCKADE_WEIGHT": 0.75,
-    "FIRST_KING_BONUS": 7.5,
+    "POSITIONAL_WEIGHT": 0.15,  
+    "BLOCKADE_WEIGHT": 0.95,
+    "FIRST_KING_BONUS": 8.5,
     "SIMPLIFICATION_BONUS": 0.3,
-    "MOBILITY_WEIGHT": 0.2    # <-- Doubled
+    "MOBILITY_WEIGHT": 0.1   
 }
 
 
