@@ -18,23 +18,14 @@ log_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '_checkers_debug.l
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)-10s - %(levelname)-8s - %(message)s', filename=os.path.join('logs', log_filename), filemode='w', force=True)
 logger = logging.getLogger(__name__)
 
-
-# ======================================================================================
-# --- File Dialog Process (Correct and Unchanged) ---
-# ======================================================================================
 def open_file_dialog_process(conn, title, filetypes):
-    """
-    A generic function to run a file dialog in a separate process.
-    """
+    """A generic function to run a file dialog in a separate process."""
     try:
-        root = tk.Tk()
-        root.withdraw()
+        root = tk.Tk(); root.withdraw()
         filepath = filedialog.askopenfilename(title=title, filetypes=filetypes)
         conn.send(filepath if filepath else "")
-    except Exception as e:
-        conn.send("")
-    finally:
-        conn.close()
+    except Exception: conn.send("")
+    finally: conn.close()
 
 # --- Imports ---
 from game_states import PlayerSelectionScreen
@@ -54,45 +45,29 @@ class App:
         self.dialog_process = None
         self.dialog_pipe_parent_conn = None
         self.is_waiting_for_dialog = False
-        self.dialog_load_type = None # NEW: To track which load was requested
+        self.dialog_load_type = None
 
     def main_loop(self):
+        """The main loop for the application, handling events and state transitions."""
         while not self.done:
             # --- Handle File Dialog Requests ---
             if not self.is_waiting_for_dialog:
                 if hasattr(self.state, 'wants_to_load_pdn') and self.state.wants_to_load_pdn:
-                    self.state.wants_to_load_pdn = False
-                    self.dialog_load_type = 'pdn' # Track request type
-                    title, types = "Select a PDN file", (("PDN files", "*.pdn"), ("All files", "*.*"))
-                    self.dialog_pipe_parent_conn, child_conn = mp.Pipe()
-                    self.dialog_process = mp.Process(target=open_file_dialog_process, args=(child_conn, title, types))
-                    self.dialog_process.start()
-                    self.is_waiting_for_dialog = True
-
+                    self.state.wants_to_load_pdn = False; self.dialog_load_type = 'pdn'
+                    title, types = "Select a PDN file", (("PDN files", "*.pdn"),)
+                    self._launch_file_dialog(title, types)
                 elif hasattr(self.state, 'wants_to_load_fen') and self.state.wants_to_load_fen:
-                    self.state.wants_to_load_fen = False
-                    self.dialog_load_type = 'fen' # Track request type
-                    title, types = "Select a FEN text file", (("Text files", "*.txt"), ("All files", "*.*"))
-                    self.dialog_pipe_parent_conn, child_conn = mp.Pipe()
-                    self.dialog_process = mp.Process(target=open_file_dialog_process, args=(child_conn, title, types))
-                    self.dialog_process.start()
-                    self.is_waiting_for_dialog = True
+                    self.state.wants_to_load_fen = False; self.dialog_load_type = 'fen'
+                    title, types = "Select a FEN text file", (("Text files", "*.txt"),)
+                    self._launch_file_dialog(title, types)
             
             # --- Check for Dialog Results ---
             if self.is_waiting_for_dialog and self.dialog_pipe_parent_conn.poll():
                 filepath = self.dialog_pipe_parent_conn.recv()
-                if filepath:
-                    # --- REWRITTEN: Use the tracked type to call the correct function ---
-                    if self.dialog_load_type == 'pdn' and hasattr(self.state, 'load_pdn_from_file'):
-                        self.state.load_pdn_from_file(filepath)
-                    elif self.dialog_load_type == 'fen' and hasattr(self.state, 'load_fen_from_file'):
-                        self.state.load_fen_from_file(filepath)
-                
-                # Cleanup
-                self.dialog_process.join()
-                self.dialog_pipe_parent_conn.close()
-                self.is_waiting_for_dialog = False
-                self.dialog_load_type = None
+                if filepath and hasattr(self.state, 'load_fen_from_file'):
+                    self.state.load_fen_from_file(filepath)
+                self.dialog_process.join(); self.dialog_pipe_parent_conn.close()
+                self.is_waiting_for_dialog = False; self.dialog_load_type = None
 
             # --- Event Loop ---
             for event in pygame.event.get():
@@ -108,11 +83,11 @@ class App:
             # --- State Transitions ---
             if self.state.done:
                 if isinstance(self.state, PlayerSelectionScreen):
-                    configs = self.state.player_configs
-                    if configs:
-                        self.state = CheckersGame(self.screen, None, self.args, configs["red"], configs["white"])
-                        self.states["player_selection"].reset()
+                    # --- FIX: Directly create a CheckersGame instance ---
+                    # The CheckersGame class now handles its own default player setup.
+                    self.state = CheckersGame(self.screen, None, self.args)
                 elif isinstance(self.state, CheckersGame):
+                    # When a game ends, return to the main menu
                     self.state = self.states["player_selection"]
                     self.state.reset()
 
@@ -120,6 +95,13 @@ class App:
             self.clock.tick(60)
         pygame.quit()
         sys.exit()
+
+    def _launch_file_dialog(self, title, types):
+        """Helper to start the file dialog process."""
+        self.dialog_pipe_parent_conn, child_conn = mp.Pipe()
+        self.dialog_process = mp.Process(target=open_file_dialog_process, args=(child_conn, title, types))
+        self.dialog_process.start()
+        self.is_waiting_for_dialog = True
 
 if __name__ == '__main__':
     mp.freeze_support()

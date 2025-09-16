@@ -10,7 +10,9 @@ logger = logging.getLogger('board')
 # ======================================================================================
 def quiescence_search(board, alpha, beta, maximizing_player, evaluate_func):
     """
-    A specialized search that correctly handles forced captures.
+    A specialized search that correctly handles forced captures. It explores
+    all capture sequences until a "quiet" position (no captures) is reached
+    before returning a stable evaluation.
     """
     if board.winner() is not None:
         return evaluate_func(board), []
@@ -44,7 +46,7 @@ def quiescence_search(board, alpha, beta, maximizing_player, evaluate_func):
 
 def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
     """
-    The main search function, now upgraded with a correct and efficient
+    The main search function, upgraded with a correct and efficient
     Principal Variation Search (PVS) implementation for LMR.
     """
     if board.winner() is not None:
@@ -67,10 +69,8 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         max_eval = float('-inf')
         for i, path in enumerate(all_moves):
             move_board = board.apply_move(path)
-            is_capture = abs(path[0][0] - path[1][0]) == 2
             evaluation, subsequent_sequence = 0, []
 
-            # --- REFINED LMR / PVS Logic ---
             if i == 0: # First move is the "Principal Variation", search it fully.
                 evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, False, evaluate_func)
             else:
@@ -90,10 +90,8 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
         min_eval = float('inf')
         for i, path in enumerate(all_moves):
             move_board = board.apply_move(path)
-            is_capture = abs(path[0][0] - path[1][0]) == 2
             evaluation, subsequent_sequence = 0, []
 
-            # --- REFINED LMR / PVS Logic ---
             if i == 0:
                 evaluation, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, True, evaluate_func)
             else:
@@ -111,11 +109,14 @@ def minimax(board, depth, alpha, beta, maximizing_player, evaluate_func):
 # ======================================================================================
 # --- Top-Level AI Interface with Iterative Deepening & Aspiration Windows ---
 # ======================================================================================
+
 def get_ai_move_analysis(board, max_depth, color_to_move, evaluate_func):
     """
-    Initiates the AI's thinking process using iterative deepening and aspiration windows.
+    Initiates the AI's thinking process using iterative deepening and a corrected
+    aspiration window implementation.
     """
     is_maximizing = color_to_move == WHITE
+    
     all_sequences = board.get_all_move_sequences(color_to_move)
     captures = [p for p in all_sequences if abs(p[0][0]-p[1][0])==2]
     quiet_moves = [p for p in all_sequences if abs(p[0][0]-p[1][0])!=2]
@@ -126,7 +127,7 @@ def get_ai_move_analysis(board, max_depth, color_to_move, evaluate_func):
     best_path_for_execution = possible_moves[0]
     all_scored_moves_final = []
     
-    ASPIRATION_WINDOW_DELTA = 0.4
+    ASPIRATION_WINDOW_DELTA = 0.5
     last_score = 0
     
     for depth in range(1, max_depth + 1):
@@ -134,6 +135,7 @@ def get_ai_move_analysis(board, max_depth, color_to_move, evaluate_func):
         
         while True:
             all_scored_moves_current_depth = []
+            
             for move_path in possible_moves:
                 move_board = board.apply_move(move_path)
                 score, subsequent_sequence = minimax(move_board, depth - 1, alpha, beta, not is_maximizing, evaluate_func)
@@ -143,13 +145,17 @@ def get_ai_move_analysis(board, max_depth, color_to_move, evaluate_func):
             current_best_score = all_scored_moves_current_depth[0][0]
 
             if current_best_score <= alpha:
-                logger.warning(f"Aspiration fail-low at depth {depth}. Re-searching.")
-                beta = alpha; alpha = float('-inf')
+                logger.warning(f"Aspiration fail-low at depth {depth} (score <= {alpha:.2f}). Re-searching.")
+                beta = alpha
+                alpha = float('-inf')
                 continue
+            
             elif current_best_score >= beta:
-                logger.warning(f"Aspiration fail-high at depth {depth}. Re-searching.")
-                alpha = beta; beta = float('inf')
+                logger.warning(f"Aspiration fail-high at depth {depth} (score >= {beta:.2f}). Re-searching.")
+                alpha = beta
+                beta = float('inf')
                 continue
+            
             break
 
         if not all_scored_moves_current_depth: break
