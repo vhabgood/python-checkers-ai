@@ -24,6 +24,31 @@ class Board:
         self.moves_since_progress = 0
         self.create_board()
 
+    def get_fen(self):
+        """
+        Generates a FEN (Forsyth-Edwards Notation) string for the current board state.
+        This is crucial for logging and debugging.
+        """
+        turn_char = 'W' if self.turn == WHITE else 'R'
+        white_pieces, red_pieces = [], []
+
+        # Iterate through all valid squares to ensure consistent ordering
+        for i in range(1, 33):
+            r, c = ACF_TO_COORD[i]
+            piece = self.get_piece(r,c)
+            if piece != 0:
+                pos = i
+                fen_char = f"K{pos}" if piece.king else str(pos)
+                if piece.color == WHITE:
+                    white_pieces.append(fen_char)
+                else:
+                    red_pieces.append(fen_char)
+        
+        white_str = "W" + ",".join(white_pieces)
+        red_str = "R" + ",".join(red_pieces)
+
+        return f"{turn_char}:{white_str}:{red_str}"
+
     def __deepcopy__(self, memo):
         """Custom deepcopy to handle the database connection correctly."""
         new_board = Board(db_conn=self.db_conn)
