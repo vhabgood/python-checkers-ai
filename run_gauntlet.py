@@ -6,14 +6,15 @@ import os
 import argparse
 from datetime import datetime
 
+# --- FIX: All engine imports moved to the top level for proper initialization ---
+from engine.board import Board
+from engine.constants import RED, WHITE
+from engine.search import get_ai_move_analysis
+from engine.evaluation import evaluate_board_v1, evaluate_board_v2_experimental
+
 # --- REFINED: Logging Configuration ---
 def setup_logging(eval_log_enabled):
-    """
-    Configures all loggers for the gauntlet.
-    - Root logger for console progress.
-    - 'eval_detail' logger for CSV evaluation data.
-    - 'search_detail' logger for aspiration fail messages.
-    """
+    # ... (rest of the function is unchanged) ...
     # Configure the root logger for clean console output
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s',
                         handlers=[logging.StreamHandler()]) # Explicitly use console
@@ -34,19 +35,19 @@ def setup_logging(eval_log_enabled):
         eval_logger.propagate = False
         eval_logger.info("Engine,FEN,FinalScore,Material,Positional,Blockade,FirstKing,Mobility,Advancement,Simplification")
 
+
 class HeadlessGame:
     """
     A class to simulate a single game of checkers between two AI engines
     without any graphical user interface.
     """
     def __init__(self, starting_fen, red_player_config, white_player_config, ai_depth=5):
-        # --- FIX: Moved engine import inside the method to avoid library conflicts ---
-        from engine.board import Board
+        # The import is no longer needed here
         self.board = Board()
         self.board.create_board_from_fen(starting_fen)
         
         self.players = {
-            'RED': red_player_config, # Using strings as keys to avoid circular import issues
+            'RED': red_player_config,
             'WHITE': white_player_config
         }
         self.ai_depth = ai_depth
@@ -68,20 +69,19 @@ class HeadlessGame:
         Executes the game loop until a result is determined.
         Returns: The winner ('V1', 'V2', or 'DRAW')
         """
-        # --- FIX: Moved engine imports inside the method ---
-        from engine.constants import RED, WHITE
-        from engine.search import get_ai_move_analysis
-
+        # Imports are no longer needed here
         db_conn = sqlite3.connect("checkers_endgame.db")
 
         while True:
             winner_color = self.board.winner()
             if winner_color:
                 winner_name = self.players['RED']['name'] if winner_color == RED else self.players['WHITE']['name']
-                db_conn.close(); return winner_name
+                db_conn.close()
+                return winner_name
             
             if self._update_position_counts(self.board) or self.board.moves_since_progress >= 80:
-                db_conn.close(); return "DRAW"
+                db_conn.close()
+                return "DRAW"
 
             current_turn_color = self.board.turn
             current_player_config = self.players['RED'] if current_turn_color == RED else self.players['WHITE']
@@ -90,11 +90,18 @@ class HeadlessGame:
             board_for_ai = self.board
             board_for_ai.db_conn = db_conn
 
-            best_move, _ = get_ai_move_analysis(board_for_ai, self.ai_depth, current_turn_color, eval_func)
+            analysis_result = get_ai_move_analysis(board_for_ai, self.ai_depth, current_turn_color, eval_func)
+            
+            # This logic now correctly handles a true game-over scenario
+            if analysis_result is None:
+                best_move = None
+            else:
+                best_move, _ = analysis_result
 
             if not best_move:
                 opponent_color_name = self.players['WHITE']['name'] if current_turn_color == RED else self.players['RED']['name']
-                db_conn.close(); return opponent_color_name
+                db_conn.close()
+                return opponent_color_name
             
             self.board = self.board.apply_move(best_move)
         
@@ -105,11 +112,10 @@ def run_gauntlet(args):
     """
     Runs a series of games from a FEN file to test two engine versions.
     """
-    # --- FIX: Moved engine imports inside the function ---
-    from engine.evaluation import evaluate_board_v1, evaluate_board_v2_experimental
-
+    # Imports are no longer needed here
     setup_logging(args.eval_log)
     
+    # ... (rest of the function is unchanged) ...
     logging.info("Starting Engine Gauntlet...")
 
     GAUNTLET_AI_DEPTH = 7
@@ -136,7 +142,6 @@ def run_gauntlet(args):
         winner1 = game1.run()
         scores[winner1] += 1
         if winner1 != 'DRAW': winning_fens[winner1].append(fen)
-        # --- NEW: Improved console output ---
         logging.info(f"Game {game_num} complete. Winner: {winner1}. | Current Score: (V2 {scores['V2']} - V1 {scores['V1']} - D {scores['DRAW']})")
 
         # --- Game 2: V1 as White ---
@@ -155,15 +160,14 @@ def run_gauntlet(args):
         f.write("="*40 + "\n")
         f.write(f"Final Score: ({scores.get('V2', 0)} - {scores.get('V1', 0)} - {scores.get('DRAW', 0)})\n")
         f.write("="*40 + "\n\n")
-        # --- FIX: Removed stray "R.I.P." text ---
         f.write(f"Positions where V2 (Experimental) Won ({len(winning_fens.get('V2',[]))}):\n")
         for w_fen in winning_fens.get('V2',[]) if winning_fens.get('V2',[]) else ["- None"]: f.write(f"- {w_fen}\n")
         f.write("\n")
-        # --- FIX: Removed stray "R.I.P." text ---
         f.write(f"Positions where V1 (Stable) Won ({len(winning_fens.get('V1',[]))}):\n")
         for w_fen in winning_fens.get('V1',[]) if winning_fens.get('V1',[]) else ["- None"]: f.write(f"- {w_fen}\n")
     
     logging.info(f"Results saved to '{results_file}'.")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run a gauntlet of checkers games between two engine versions.")
@@ -171,5 +175,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     run_gauntlet(args)
-
-

@@ -101,12 +101,21 @@ def _calculate_score(board, config):
     
     final_score = w_material + w_positional + w_blockade + w_mobility + w_advancement + first_king_bonus
 
-    # --- Endgame Principles ---
+    # --- REVISED: Endgame Principles with Smoothed Scaling ---
+    # This new logic removes the hard "cliff" at +/- 1.5, which was causing
+    # the aspiration search to oscillate. The bonus now scales smoothly with
+    # the material advantage, creating a stable evaluation.
     simplification_bonus = 0
-    if final_score > 1.5:
-        simplification_bonus = (12 - board.red_left) * config["SIMPLIFICATION_BONUS"]
-    elif final_score < -1.5:
-        simplification_bonus = -((12 - board.white_left) * config["SIMPLIFICATION_BONUS"])
+    # Check for a material advantage BEFORE applying the bonus.
+    # The bonus is proportional to the number of pieces traded off.
+    if material_score > 0: # White has a material advantage
+        # The bonus is scaled by the material score itself. A larger lead gives a stronger incentive to simplify.
+        scaling_factor = min(1.0, material_score / 2.0) # Scale up to a 2-pawn advantage
+        simplification_bonus = (12 - board.red_left) * config["SIMPLIFICATION_BONUS"] * scaling_factor
+    elif material_score < 0: # Red has a material advantage
+        scaling_factor = min(1.0, -material_score / 2.0)
+        simplification_bonus = -((12 - board.white_left) * config["SIMPLIFICATION_BONUS"]) * scaling_factor
+    
     final_score += simplification_bonus
 
     # --- Log the full breakdown ---

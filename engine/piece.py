@@ -44,6 +44,10 @@ class Piece:
         pygame.draw.circle(win, GREY, (self.x, self.y), radius + self.OUTLINE)
         pygame.draw.circle(win, self.color, (self.x, self.y), radius)
         
+        # --- FIX: Translate logical color to display color ---
+        display_color = COLOR_RED if self.color == RED else COLOR_WHITE
+        pygame.draw.circle(win, display_color, (self.x, self.y), radius)
+        
         if self.king:
             num_points = 5
             outer_radius = radius - 8

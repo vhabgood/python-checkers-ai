@@ -11,8 +11,14 @@ WIDTH, HEIGHT = BOARD_SIZE + INFO_WIDTH, BOARD_SIZE + 120
 ROWS, COLS = 8, 8
 SCREEN_HEIGHT = 800
 SQUARE_SIZE = BOARD_SIZE // ROWS
-RED = (255, 0, 0)
-WHITE = (255, 255, 255)
+# --- Game Logic Constants ---
+# Use simple, unambiguous strings for all internal game logic.
+RED = 'red'
+WHITE = 'white'
+# --- Pygame Display Colors ---
+# Use these RGB tuples ONLY for drawing things on the screen.
+COLOR_RED = (255, 0, 0)
+COLOR_WHITE = (255, 255, 255)
 PLAYER_NAMES = {RED: 'Red', WHITE: 'White'}
 COLOR_CROWN = (255, 215, 0)
 COLOR_TEXT = (255, 255, 255)
