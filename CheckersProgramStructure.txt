@@ -1,165 +1,65 @@
-Of course. Pausing to document the architecture is an excellent idea. It helps clarify the program's structure and identify which components are stable.
-
-Here is the program's class and method breakdown in a text file format, with comments indicating the methods we have tested and confirmed are working correctly.
-
------
-
-### Checkers AI Program Structure
-
-```
+Checkers AI Program Structure (Updated)This document outlines the architecture of the checkers engine, reflecting the latest refactoring and feature additions.
 ======================================================================
 FILE: main.py
-======================================================================
-
 CLASS: App
-  |
-  |-- METHOD: __init__(self, args)
-  |   |  INPUTS: args (from argparse)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Initializes Pygame, the main screen, and the state manager.
-  |
-  |-- METHOD: load_game(self, player_color_str)
-  |   |  INPUTS: player_color_str (string: 'white' or 'red')
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Runs in a separate thread to load all game resources without freezing the UI. Creates the CheckersGame instance. # Tested and confirmed working.
-  |
-  |-- METHOD: transition_state(self)
-  |   |  INPUTS: None
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Handles changing from one game state (like 'selection' or 'loading') to the next. # Tested and confirmed working.
-  |
-  |-- METHOD: main_loop(self)
-  |   |  INPUTS: None
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: The main loop of the application that handles events, updates, and drawing. # Tested and confirmed working.
-
+|
+|-- METHOD: init(self, args)
+|   
+|  PURPOSE: Initializes Pygame, the main screen, and the state manager. Sets the initial state to the player selection screen.
+|
+|-- METHOD: main_loop(self)
+|   
+|  PURPOSE: The main loop of the application. Handles the event queue, file dialog requests, state updates, drawing, and transitions between the menu and the game.
+|
+|-- METHOD: _handle_state_transition(self)
+|   
+|  PURPOSE: Manages the switch from the main menu (PlayerSelectionScreen) to the main analysis board (CheckersGame).
 ======================================================================
 FILE: game_states.py
-======================================================================
-
-CLASS: Button
-  |
-  |-- METHOD: __init__(self, text, pos, size, callback)
-  |   |  INPUTS: text (string), pos (tuple), size (tuple), callback (function)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Creates a clickable button.
-  |
-  |-- METHOD: draw(self, screen)
-  |   |  INPUTS: screen (pygame.Surface)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Draws the button on the screen and handles hover effect.
-  |
-  |-- METHOD: is_clicked(self, pos)
-  |   |  INPUTS: pos (tuple)
-  |   |  OUTPUTS: boolean
-  |   |  PURPOSE: Checks if a given position is within the button's bounds.
-
 CLASS: PlayerSelectionScreen
-  |
-  |-- METHOD: select_player(self, color)
-  |   |  INPUTS: color (tuple: RED or WHITE)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Sets the player's chosen color and signals the game to transition to the loading state. # Tested and confirmed working.
-
-CLASS: LoadingScreen
-  |
-  |-- METHOD: update(self)
-  |   |  INPUTS: None
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Checks a queue for status messages from the loading thread and signals when loading is complete. # Tested and confirmed working.
-
+|
+|-- METHOD: init(self, screen)
+|   
+|  PURPOSE: Initializes the main menu with a single "Start Analysis" button.
+|
+|-- METHOD: handle_event(self, event)
+|   
+|  PURPOSE: Listens for clicks on the "Start Analysis" button to transition to the game.
 ======================================================================
-FILE: engine/checkers_game.py
-======================================================================
-
+FILE: checkers_game.py
 CLASS: CheckersGame
-  |
-  |-- METHOD: __init__(self, screen, player_color_str, status_queue, args)
-  |   |  PURPOSE: Initializes the entire game, including the board, AI, and UI elements.
-  |
-  |-- METHOD: start_ai_turn(self, force_color=None)
-  |   |  INPUTS: force_color (optional color tuple)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Starts the AI's thinking process in a separate thread. Clears the previous analysis from the dev panel. # Tested and confirmed working.
-  |
-  |-- METHOD: run_ai_calculation(self, color_to_move)
-  |   |  INPUTS: color_to_move (color tuple)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: The main function for the AI thread. Calls the search algorithm and puts the best move on the queue. # Tested and confirmed working.
-  |
-  |-- METHOD: _change_turn(self)
-  |   |  INPUTS: None
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Flips the current turn from one player to the other and updates the game state accordingly. # Tested and confirmed working.
-  |
-  |-- METHOD: _apply_move_sequence(self, path)
-  |   |  INPUTS: path (list of coordinate tuples)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Applies a move or a sequence of jumps to the main game board. # Tested and confirmed working.
-  |
-  |-- METHOD: update(self)
-  |   |  INPUTS: None
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: The main game logic loop. Starts the AI when it's its turn and retrieves/applies the AI's chosen move from the queue. # Tested and confirmed working.
-  |
-  |-- METHOD: draw_dev_panel(self)
-  |   |  INPUTS: None
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Draws the developer panel, displaying the AI's analysis from its most recent turn. # Tested and confirmed working.
-
+|  PURPOSE: A universal, flexible analysis board. This is the core of the UI, managing the board state, all user interactions, and the AI thinking process.
+|
+|-- METHOD: init(self, screen, status_queue, args)
+|   
+|  PURPOSE: Initializes the analysis board with a default player setup (Human vs. AI V1) and creates all UI buttons and state variables.
+|
+|-- METHOD: cycle_player(self, color)
+|   
+|  PURPOSE: The core of the flexible design. Cycles the controller for a given color between Human, AI V1, and AI V2.||-- METHOD: update(self)
+|   
+|  PURPOSE: The main logic loop for the game. Checks for AI moves, applies them, and enforces the pause and move delay logic.||-- METHOD: start_ai_turn(self)
+|   
+|  PURPOSE: Kicks off the AI's thinking process in a separate thread.||-- METHOD: load_fen_from_file(self, filepath)|   |  PURPOSE: Loads a board position from a .txt file containing FEN notation.
 ======================================================================
-FILE: engine/board.py
-======================================================================
-
-CLASS: Board
-  |
-  |-- METHOD: move(self, piece, row, col)
-  |   |  INPUTS: piece (Piece object), row (int), col (int)
-  |   |  OUTPUTS: None
-  |   |  PURPOSE: Moves a piece on the board's internal representation and handles king promotion. # Tested and confirmed working.
-  |
-  |-- METHOD: get_all_valid_moves(self, color)
-  |   |  INPUTS: color (tuple)
-  |   |  OUTPUTS: dictionary of valid moves
-  |   |  PURPOSE: The authoritative function for getting all legal moves for a player, correctly enforcing the mandatory jump rule. # Tested and confirmed working.
-  |
-  |-- METHOD: apply_move(self, path)
-  |   |  INPUTS: path (list of coordinate tuples)
-  |   |  OUTPUTS: new Board object
-  |   |  PURPOSE: The AI's "imagination". Creates a copy of the board, applies a move, and returns the resulting board state for analysis. # Tested and confirmed working.
-
-======================================================================
-FILE: engine/search.py
-======================================================================
-
-FUNCTION: get_ai_move_analysis(board, depth, color_to_move, evaluate_func)
-  |  INPUTS: board (Board object), depth (int), color_to_move (tuple), evaluate_func (function)
-  |  OUTPUTS: best_move_path (list), top_5_for_display (list)
-  |  PURPOSE: The top-level AI function that initiates the search and returns the best move and analysis. # Tested and confirmed working.
-
+FILE: search.py
+FUNCTION: get_ai_move_analysis(board, max_depth, color_to_move, evaluate_func)
+|  PURPOSE: The top-level interface for the AI search. Manages the iterative deepening loop and the Aspiration Window logic.
 FUNCTION: minimax(board, depth, alpha, beta, maximizing_player, evaluate_func)
-  |  INPUTS: board (Board object), depth (int), alpha (float), beta (float), maximizing_player (boolean), evaluate_func (function)
-  |  OUTPUTS: score (float), best_path (list)
-  |  PURPOSE: The core recursive search algorithm that explores the game tree to find the best move. # The source of the "double move" bug.
-
+|  PURPOSE: The core recursive search algorithm. Now implements a robust Principal Variation Search (PVS) with Late Move Reductions (LMR) and a History Heuristic for intelligent move ordering.FUNCTION: quiescence_search(board, alpha, beta, maximizing_player, evaluate_func)
+|  PURPOSE: A specialized search that explores all capture sequences at the end of a main search to avoid the horizon effect.
 ======================================================================
-FILE: engine/evaluation.py
+FILE: evaluation.py
+FUNCTION: _calculate_score(board, config)
+|  PURPOSE: The AI's "brain". A single, powerful function that analyzes a board position based on a given configuration of weights.
+FUNCTION: evaluate_board_v1(board)
+|  PURPOSE: A wrapper that calls the core evaluator with the stable V1 weights.FUNCTION: evaluate_board_v2_experimental(board)
+|  PURPOSE: A wrapper that calls the core evaluator with the new experimental V2 weights.
 ======================================================================
-
-FUNCTION: evaluate_board(board)
-  |  INPUTS: board (Board object)
-  |  OUTPUTS: score (float)
-  |  PURPOSE: The AI's "brain". Analyzes a board position and returns a score representing how good the position is for White. # Tested and confirmed working.
-
+FILE: run_gauntlet.py
+FUNCTION: run_gauntlet(args)
+|  PURPOSE: The main function for the headless testing script. Loads all FEN positions, runs a match for each, and tallies the score.
+CLASS: HeadlessGame
+|  PURPOSE: A lightweight class that simulates a single checkers game between two AI engines without any GUI, used by the gauntlet.
 ======================================================================
-FILE: engine/piece.py
-======================================================================
-
-CLASS: Piece
-  |  PURPOSE: Represents a single checker piece. All methods are simple setters/getters and are considered stable. # Tested and confirmed working.
-
-======================================================================
-FILE: engine/constants.py
-======================================================================
-  |  PURPOSE: Contains global constants for the game. No classes or methods. # Tested and confirmed working.
-```
+STABLE FILES: (No recent major changes)
