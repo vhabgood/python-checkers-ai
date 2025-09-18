@@ -4,7 +4,7 @@ import sqlite3
 from .constants import RED, WHITE, ROWS, COLS, COORD_TO_ACF
 
 # --- Get the dedicated evaluation logger ---
-eval_logger = logging.getLogger('eval_detail')
+eval_logger = logging.getLogger('eval')
 
 # ======================================================================================
 # --- Piece-Square Tables (PSTs) & Configurations (Unchanged) ---
@@ -90,7 +90,8 @@ def _calculate_score(board, config):
                 if b2 and b2.color == RED: red_blockade_bonus += 1
     blockade_score = white_blockade_bonus - red_blockade_bonus
     
-    mobility_score = len(board.get_all_move_sequences(WHITE)) - len(board.get_all_move_sequences(RED))
+    # --- MODIFIED: Use the new override parameter ---
+    mobility_score = len(board.get_all_move_sequences(WHITE, override_turn_check=True)) - len(board.get_all_move_sequences(RED, override_turn_check=True))
 
     # --- Combine Weighted Scores ---
     w_material = material_score * config["MATERIAL_WEIGHT"]
@@ -118,14 +119,19 @@ def _calculate_score(board, config):
     
     final_score += simplification_bonus
 
-    # --- Log the full breakdown ---
-    if is_logging_enabled:
-        log_data = [
-            engine_name, fen, f"{final_score:.4f}", f"{w_material:.4f}",
-            f"{w_positional:.4f}", f"{w_blockade:.4f}", f"{first_king_bonus:.4f}",
-            f"{w_mobility:.4f}", f"{w_advancement:.4f}", f"{simplification_bonus:.4f}"
-        ]
-        eval_logger.info(",".join(log_data))
+    # --- NEW: Detailed Debug Logging ---
+    eval_logger.debug(f"--- EVAL START for {board.turn} ---")
+    eval_logger.debug(f"FEN: {board.get_fen()}")
+    eval_logger.debug(f"Material: {material_score:.2f} -> Weighted: {w_material:.2f}")
+    eval_logger.debug(f"Positional: {positional_score:.2f} -> Weighted: {w_positional:.2f}")
+    eval_logger.debug(f"Blockade: {blockade_score:.2f} -> Weighted: {w_blockade:.2f}")
+    eval_logger.debug(f"Mobility: {mobility_score:.2f} -> Weighted: {w_mobility:.2f}")
+    eval_logger.debug(f"Advancement: {advancement_score:.2f} -> Weighted: {w_advancement:.2f}")
+    eval_logger.debug(f"First King Bonus: {first_king_bonus:.2f}")
+    eval_logger.debug(f"Simplification Bonus: {simplification_bonus:.2f}")
+    eval_logger.debug(f"FINAL SCORE: {final_score:.4f}")
+    eval_logger.debug("--- EVAL END ---")
+    # --- END of new block ---
 
     return final_score
 

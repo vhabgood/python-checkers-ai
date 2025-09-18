@@ -4,37 +4,34 @@ import sqlite3
 import time
 import os
 import argparse
+import re
 from datetime import datetime
 
-# --- FIX: All engine imports moved to the top level for proper initialization ---
+# --- MODIFIED: Import our logging setup and constants ---
+from engine.debug import setup_logging
 from engine.board import Board
-from engine.constants import RED, WHITE
+# --- MODIFIED: Added COORD_TO_ACF for the new helper function ---
+from engine.constants import RED, WHITE, COORD_TO_ACF
 from engine.search import get_ai_move_analysis
 from engine.evaluation import evaluate_board_v1, evaluate_board_v2_experimental
 
-# --- REFINED: Logging Configuration ---
-def setup_logging(eval_log_enabled):
-    # ... (rest of the function is unchanged) ...
-    # Configure the root logger for clean console output
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s',
-                        handlers=[logging.StreamHandler()]) # Explicitly use console
+# --- Get the specific logger ---
+game_logger = logging.getLogger('gameflow')
+logger = logging.getLogger()
+# --- NEW: Helper function to format moves for the log ---
+def format_move_path_for_log(path):
+    """Converts a move path like [(4, 5), (5, 4)] to ACF notation like '17-21'."""
+    if not path or len(path) < 2:
+        return "Invalid Path"
     
-    # --- Setup dedicated file for search details (aspiration fails) ---
-    search_logger = logging.getLogger('search_detail')
-    search_logger.setLevel(logging.WARNING) # We only care about the warnings
-    search_log_handler = logging.FileHandler('search_log.log', mode='w')
-    search_logger.addHandler(search_log_handler)
-    search_logger.propagate = False # This is the key to stopping console spam
-        
-    # --- Setup dedicated file for evaluation CSV data ---
-    if eval_log_enabled:
-        eval_logger = logging.getLogger('eval_detail')
-        eval_logger.setLevel(logging.INFO)
-        eval_log_handler = logging.FileHandler('evaluation_log.csv', mode='w')
-        eval_logger.addHandler(eval_log_handler)
-        eval_logger.propagate = False
-        eval_logger.info("Engine,FEN,FinalScore,Material,Positional,Blockade,FirstKing,Mobility,Advancement,Simplification")
-
+    start_pos, end_pos = path[0], path[-1]
+    start_acf = COORD_TO_ACF.get(start_pos, "??")
+    end_acf = COORD_TO_ACF.get(end_pos, "??")
+    
+    # Determine if it's a jump or a simple move
+    separator = 'x' if abs(start_pos[0] - path[1][0]) == 2 else '-'
+    
+    return f"{start_acf}{separator}{end_acf}"
 
 class HeadlessGame:
     """
@@ -42,7 +39,6 @@ class HeadlessGame:
     without any graphical user interface.
     """
     def __init__(self, starting_fen, red_player_config, white_player_config, ai_depth=5):
-        # The import is no longer needed here
         self.board = Board()
         self.board.create_board_from_fen(starting_fen)
         
@@ -69,7 +65,6 @@ class HeadlessGame:
         Executes the game loop until a result is determined.
         Returns: The winner ('V1', 'V2', or 'DRAW')
         """
-        # Imports are no longer needed here
         db_conn = sqlite3.connect("checkers_endgame.db")
 
         while True:
@@ -90,13 +85,17 @@ class HeadlessGame:
             board_for_ai = self.board
             board_for_ai.db_conn = db_conn
 
+            game_logger.debug(f"Starting turn for {current_turn_color}. FEN: {self.board.get_fen()}")
             analysis_result = get_ai_move_analysis(board_for_ai, self.ai_depth, current_turn_color, eval_func)
             
-            # This logic now correctly handles a true game-over scenario
-            if analysis_result is None:
+            if analysis_result is None or not analysis_result[0]:
                 best_move = None
+                game_logger.debug("AI analysis returned: None")
             else:
                 best_move, _ = analysis_result
+                # --- MODIFIED: Use the new helper function for logging ---
+                formatted_move = format_move_path_for_log(best_move)
+                game_logger.debug(f"AI analysis returned: {formatted_move}")
 
             if not best_move:
                 opponent_color_name = self.players['WHITE']['name'] if current_turn_color == RED else self.players['RED']['name']
@@ -112,13 +111,11 @@ def run_gauntlet(args):
     """
     Runs a series of games from a FEN file to test two engine versions.
     """
-    # Imports are no longer needed here
-    setup_logging(args.eval_log)
+    setup_logging(args)
     
-    # ... (rest of the function is unchanged) ...
     logging.info("Starting Engine Gauntlet...")
 
-    GAUNTLET_AI_DEPTH = 7
+    GAUNTLET_AI_DEPTH = 5
     v1_config = {'name': 'V1', 'eval_func': evaluate_board_v1}
     v2_config = {'name': 'V2', 'eval_func': evaluate_board_v2_experimental}
     fen_file = "test_positions.txt"
@@ -126,7 +123,8 @@ def run_gauntlet(args):
     
     try:
         with open(fen_file, "r") as f:
-            fens = [line.strip() for line in f if ':' in line and not line.startswith('#')]
+            content = f.read()
+            fens = re.findall(r'\[FEN "([^"]+)"\]', content)
         logging.info(f"Loaded {len(fens)} positions from '{fen_file}'.")
     except FileNotFoundError:
         logging.error(f"FATAL: Could not find '{fen_file}'. Aborting."); return
@@ -144,7 +142,6 @@ def run_gauntlet(args):
         if winner1 != 'DRAW': winning_fens[winner1].append(fen)
         logging.info(f"Game {game_num} complete. Winner: {winner1}. | Current Score: (V2 {scores['V2']} - V1 {scores['V1']} - D {scores['DRAW']})")
 
-        # --- Game 2: V1 as White ---
         game_num = i * 2 + 2
         logging.info(f"--- Running Game {game_num}/{total_games} (V1 as White) ---")
         game2 = HeadlessGame(fen, v2_config, v1_config, GAUNTLET_AI_DEPTH)
@@ -168,10 +165,12 @@ def run_gauntlet(args):
     
     logging.info(f"Results saved to '{results_file}'.")
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run a gauntlet of checkers games between two engine versions.")
-    parser.add_argument('--eval-log', action='store_true', help='Enable detailed evaluation logging to evaluation_log.csv')
+    parser.add_argument('--debug-gameflow', action='store_true', help='Enable game flow logging.')
+    parser.add_argument('--debug-search', action='store_true', help='Enable search algorithm logging.')
+    parser.add_argument('--debug-eval', action='store_true', help='Enable evaluation function logging.')
+    parser.add_argument('--debug-board', action='store_true', help='Enable board state and move gen logging.')
     args = parser.parse_args()
     
     run_gauntlet(args)
