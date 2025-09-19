@@ -1,6 +1,6 @@
 # engine/constants.py
 import pygame
-import pickle
+from .zobrist import generate_zobrist_keys 
 
 FPS = 60
 DEFAULT_AI_DEPTH = 5
@@ -12,16 +12,10 @@ WIDTH, HEIGHT = BOARD_SIZE + INFO_WIDTH, BOARD_SIZE + 120
 ROWS, COLS = 8, 8
 SCREEN_HEIGHT = 800
 SQUARE_SIZE = BOARD_SIZE // ROWS
-ZOBRIST_KEYS= {}
-try:
-    # This assumes 'game_resources.pkl' is in the main project directory
-    with open("game_resources.pkl", "rb") as f:
-        resources = pickle.load(f)
-        ZOBRIST_KEYS = resources.get('ZOBRIST_KEYS', {})
-except FileNotFoundError:
-    print("WARNING: game_resources.pkl not found. Zobrist hashing will be disabled.")
-# --- Game Logic Constants ---
-# Use simple, unambiguous strings for all internal game logic.
+# --- Zobrist Hashing Keys ---
+# This generates a unique set of random keys every time the program starts.
+ZOBRIST_KEYS = generate_zobrist_keys()
+
 RED = 'red'
 WHITE = 'white'
 # --- Pygame Display Colors ---

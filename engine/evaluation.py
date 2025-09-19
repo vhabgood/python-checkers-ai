@@ -21,15 +21,14 @@ for i in range(1, 33):
     else: MAN_PST[i], KING_PST[i] = PST_TIER_3_SCORE, PST_TIER_3_SCORE
 
 V1_CONFIG = {"MATERIAL_WEIGHT": 10.0, "POSITIONAL_WEIGHT": 0.15, "BLOCKADE_WEIGHT": 0.75, "FIRST_KING_BONUS": 7.5, "SIMPLIFICATION_BONUS": 0.3, "MOBILITY_WEIGHT": 0.1, "ADVANCEMENT_WEIGHT": 0.05}
-V2_CONFIG = {"MATERIAL_WEIGHT": 11.0, "POSITIONAL_WEIGHT": 0.65, "BLOCKADE_WEIGHT": 0.75, "FIRST_KING_BONUS": 9.5, "SIMPLIFICATION_BONUS": 0.3, "MOBILITY_WEIGHT": 0.5, "ADVANCEMENT_WEIGHT": 0.1}
+V2_CONFIG = {"MATERIAL_WEIGHT": 10.0, "POSITIONAL_WEIGHT": 0.45, "BLOCKADE_WEIGHT": 0.75, "FIRST_KING_BONUS": 7.5, "SIMPLIFICATION_BONUS": 0.3, "MOBILITY_WEIGHT": 0.1, "ADVANCEMENT_WEIGHT": 0.85}
 
 # ======================================================================================
 # --- REWRITTEN: Core Evaluation Logic with Upfront Logging ---
 # ======================================================================================
 def _calculate_score(board, config):
     """
-    The single, core evaluation function. Now with detailed logging capabilities
-    that correctly handle database hits.
+    The single, core evaluation function. Now with detailed logging for database queries.
     """
     engine_name = "V2_exp" if config["ADVANCEMENT_WEIGHT"] > 0.05 else "V1_stable"
     is_logging_enabled = eval_logger.hasHandlers()
@@ -37,28 +36,36 @@ def _calculate_score(board, config):
 
     # --- Phase 1: Endgame Database Check ---
     if hasattr(board, 'db_conn') and board.db_conn:
+        table_name, key_tuple = None, None
         try:
             table_name, key_tuple = board._get_endgame_key()
             if table_name and key_tuple:
+                eval_logger.debug(f"Querying DB table '{table_name}' with key {key_tuple}")
                 num_pieces = len(key_tuple) - 1
                 where_clause = ' AND '.join([f'p{i + 1}_pos = ?' for i in range(num_pieces)])
                 sql = f"SELECT result FROM {table_name} WHERE {where_clause} AND turn = ?"
+                
                 cursor = board.db_conn.cursor()
                 cursor.execute(sql, key_tuple)
                 result = cursor.fetchone()
+                
                 if result:
                     db_score = int(result[0])
                     final_score = (1000 - abs(db_score)) if db_score > 0 else (-1000 + abs(db_score))
-                    if is_logging_enabled:
-                        log_data = [engine_name, fen, f"{final_score:.4f}"] + ["DB_HIT"] * 7
-                        eval_logger.info(",".join(log_data))
+                    eval_logger.info(f"DB_HIT! Table: {table_name}, Key: {key_tuple}, Result: {db_score}, Final Score: {final_score}")
                     return final_score
+                else:
+                    eval_logger.debug("DB query returned no result for this position.")
+
         except Exception as e:
-            logger.error(f"DATABASE: Error during query: {e}", exc_info=True)
+            # --- MODIFIED: Log the exact error and key that caused it ---
+            eval_logger.error(f"DATABASE ERROR: {e}", exc_info=True)
+            eval_logger.error(f"Failed on table: {table_name}, key: {key_tuple}")
 
     # --- Phase 2: Static Evaluation Components ---
     material_score, positional_score, advancement_score = 0, 0, 0
     first_king_bonus = 0
+    tempo_bonus = 0.05 # A small value to start with
     if board.white_kings > 0 and board.red_kings == 0: first_king_bonus = config["FIRST_KING_BONUS"]
     elif board.red_kings > 0 and board.white_kings == 0: first_king_bonus = -config["FIRST_KING_BONUS"]
 
@@ -101,22 +108,17 @@ def _calculate_score(board, config):
     w_advancement = advancement_score * config["ADVANCEMENT_WEIGHT"]
     
     final_score = w_material + w_positional + w_blockade + w_mobility + w_advancement + first_king_bonus
+    final_score += tempo_bonus if board.turn == WHITE else -tempo_bonus
 
-    # --- REVISED: Endgame Principles with Smoothed Scaling ---
-    # This new logic removes the hard "cliff" at +/- 1.5, which was causing
-    # the aspiration search to oscillate. The bonus now scales smoothly with
-    # the material advantage, creating a stable evaluation.
     simplification_bonus = 0
-    # Check for a material advantage BEFORE applying the bonus.
-    # The bonus is proportional to the number of pieces traded off.
-    if material_score > 0: # White has a material advantage
-        # The bonus is scaled by the material score itself. A larger lead gives a stronger incentive to simplify.
-        scaling_factor = min(1.0, material_score / 2.0) # Scale up to a 2-pawn advantage
+    # The bonus is scaled by the material score. A larger lead gives a stronger incentive.
+    scaling_factor = min(1.0, abs(material_score) / 2.0) # Scale up to a 2-pawn advantage
+
+    if material_score > 1.5:
         simplification_bonus = (12 - board.red_left) * config["SIMPLIFICATION_BONUS"] * scaling_factor
-    elif material_score < 0: # Red has a material advantage
-        scaling_factor = min(1.0, -material_score / 2.0)
+    elif material_score < -1.5:
         simplification_bonus = -((12 - board.white_left) * config["SIMPLIFICATION_BONUS"]) * scaling_factor
-    
+
     final_score += simplification_bonus
 
     # --- NEW: Detailed Debug Logging ---
@@ -140,10 +142,12 @@ def _calculate_score(board, config):
 # ======================================================================================
 def evaluate_board_v1(board):
     """The stable engine, using V1_CONFIG."""
+    eval_logger.debug("--- V1 (STABLE) EVALUATION CALLED ---")
     return _calculate_score(board, V1_CONFIG)
 
 def evaluate_board_v2_experimental(board):
     """The experimental engine, using V2_CONFIG."""
+    eval_logger.debug("--- V2 (EXPERIMENTAL) EVALUATION CALLED ---")
     return _calculate_score(board, V2_CONFIG)
 
 

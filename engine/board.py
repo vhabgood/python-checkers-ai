@@ -118,15 +118,21 @@ class Board:
                     else: new_board.white_left -= 1
                     new_board.board[jumped_pos[0]][jumped_pos[1]] = 0
         
-        was_king = piece.king
+        # --- THE FIX: Update the hash BEFORE promotion ---
+        # 1. Move the piece's internal coordinates
         piece.move(end_pos[0], end_pos[1])
-
-        if end_pos[0] == ROWS - 1 and piece.color == RED and not was_king:
-            piece.make_king(); new_board.red_kings += 1
-        elif end_pos[0] == 0 and piece.color == WHITE and not was_king:
-            piece.make_king(); new_board.white_kings += 1
-
+        
+        # 2. Update the hash based on this move
         new_board._update_hash(path, piece, captured_pieces_for_hash)
+        
+        # 3. NOW, handle promotion after the hash is correct
+        was_king = piece.king
+        if not was_king:
+            if end_pos[0] == ROWS - 1 and piece.color == RED:
+                piece.make_king(); new_board.red_kings += 1
+            elif end_pos[0] == 0 and piece.color == WHITE:
+                piece.make_king(); new_board.white_kings += 1
+        
         new_board.turn = WHITE if self.turn == RED else RED
         return new_board
 
