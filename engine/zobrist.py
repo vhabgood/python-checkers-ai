@@ -5,6 +5,7 @@ def generate_zobrist_keys():
     """
     Generates a full set of Zobrist keys for hashing checkers positions.
     """
+    random.seed() # <-- ADD THIS LINE
     keys = {}
     # Generate a key for whose turn it is
     keys['turn'] = random.getrandbits(64)
