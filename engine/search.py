@@ -13,7 +13,7 @@ def clear_transposition_table():
 def _get_all_moves_for_color(board):
     all_jumps = []
     all_simple_moves = []
-    search_logger.debug(f"Finding moves for {board.turn}...")
+   # search_logger.debug(f"Finding moves for {board.turn}...")
     for r in range(ROWS):
         for c in range(COLS):
             piece = board.get_piece(r, c)

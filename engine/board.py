@@ -18,6 +18,20 @@ class Board:
         self.create_board()
         self.hash = self._calculate_initial_hash()
 
+    def copy(self):
+        """
+        Creates a deep, independent copy of the entire board state.
+        """
+        new_board = Board(db_conn=self.db_conn)
+        new_board.board = copy.deepcopy(self.board)
+        new_board.red_left = self.red_left
+        new_board.white_left = self.white_left
+        new_board.red_kings = self.red_kings
+        new_board.white_kings = self.white_kings
+        new_board.turn = self.turn
+        new_board.hash = self.hash
+        return new_board
+
     def _validate_board_state(self, calling_function=""):
         """
         A debugging trap that checks for inconsistencies in the board state.
@@ -32,166 +46,199 @@ class Board:
                         f"its grid position ({r},{c})."
                     )
                     assert (piece.row, piece.col) == (r, c), error_msg
-        board_logger.debug(f"Board state validated by {calling_function}.")
+      #  board_logger.debug(f"Board state validated by {calling_function}.")
 
     def get_hash(self):
         return self.hash
 
     def _calculate_initial_hash(self):
         h = 0
-        if not ZOBRIST_KEYS: return h
-        for r, row in enumerate(self.board):
-            for c, piece in enumerate(row):
-                if piece != 0:
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.get_piece(r,c)
+                if piece:
                     piece_char = ('R' if piece.king else 'r') if piece.color == RED else ('W' if piece.king else 'w')
-                    h ^= ZOBRIST_KEYS.get((piece_char, COORD_TO_ACF.get((r, c))), 0)
+                    acf_pos = COORD_TO_ACF.get((r, c))
+                    if acf_pos:
+                        h ^= ZOBRIST_KEYS.get((piece_char, acf_pos), 0)
         if self.turn == WHITE:
             h ^= ZOBRIST_KEYS.get('turn', 0)
         return h
 
-    def _update_hash(self, move_path, captured_pieces, promotion_details):
-        if not ZOBRIST_KEYS: return
+    def _update_hash(self, move_path, captured_pieces):
         start_pos, end_pos = move_path[0], move_path[-1]
-        piece = self.get_piece(end_pos[0], end_pos[1])
-        promoted, original_king_status = promotion_details
-        start_char = 'R' if original_king_status else ('r' if piece.color == RED else 'w')
-        end_char = 'R' if piece.king else ('r' if piece.color == RED else 'w')
-        self.hash ^= ZOBRIST_KEYS.get((start_char, COORD_TO_ACF.get(start_pos)), 0)
-        self.hash ^= ZOBRIST_KEYS.get((end_char, COORD_TO_ACF.get(end_pos)), 0)
-        for p, pos in captured_pieces:
-            captured_char = 'R' if p.king else ('r' if p.color == RED else 'w')
-            self.hash ^= ZOBRIST_KEYS.get((captured_char, COORD_TO_ACF.get(pos)), 0)
+        piece = self.get_piece(end_pos[0], end_pos[1]) # Piece is already at the new position
+        
+        original_piece_char = ('R' if piece.king and not (piece.color == RED and end_pos[0] == 7) and not (piece.color == WHITE and end_pos[0] == 0) else 'r') if piece.color == RED else ('W' if piece.king and not (piece.color == WHITE and end_pos[0] == 0) and not (piece.color == RED and end_pos[0] == 7) else 'w')
+        final_piece_char = ('R' if piece.king else 'r') if piece.color == RED else ('W' if piece.king else 'w')
+
+        self.hash ^= ZOBRIST_KEYS.get((original_piece_char, COORD_TO_ACF.get(start_pos)), 0)
+        self.hash ^= ZOBRIST_KEYS.get((final_piece_char, COORD_TO_ACF.get(end_pos)), 0)
+        
+        for (r,c), captured_char in captured_pieces:
+             self.hash ^= ZOBRIST_KEYS.get((captured_char, COORD_TO_ACF.get((r,c))), 0)
+
         self.hash ^= ZOBRIST_KEYS.get('turn', 0)
 
-    def create_board(self):
-        self.board = [[0] * COLS for _ in range(ROWS)]
+    def draw(self, win):
+        self.draw_squares(win)
         for row in range(ROWS):
             for col in range(COLS):
-                if (row + col) % 2 == 1:
-                    if row < 3: self.board[row][col] = Piece(row, col, WHITE)
-                    elif row > 4: self.board[row][col] = Piece(row, col, RED)
+                piece = self.board[row][col]
+                if piece != 0:
+                    piece.draw(win, row, col)
 
-    def create_board_from_fen(self, fen_string):
-        self.board = [[0] * COLS for _ in range(ROWS)]
-        self.red_left, self.white_left, self.red_kings, self.white_kings = 0, 0, 0, 0
-        match = re.search(r'\"(.*?)\"', fen_string)
-        if not match: return
-        core_fen = match.group(1).upper()
-        parts = core_fen.split(':')
-        self.turn = RED if parts[0] in ['B', 'R'] else WHITE
-        for part in parts[1:]:
-            color = RED if part.startswith('B') or part.startswith('R') else WHITE
-            for pos_str in part[1:].split(','):
-                if not pos_str: continue
-                is_king = pos_str.startswith('K')
-                digits = re.search(r'\d+', pos_str)
-                if not digits: continue
-                acf_num = int(digits.group(0))
-                if acf_num not in ACF_TO_COORD: continue
-                row, col = ACF_TO_COORD[acf_num]
-                piece = Piece(row, col, color)
-                if is_king:
-                    piece.make_king()
-                    if color == RED: self.red_kings += 1
-                    else: self.white_kings += 1
-                self.board[row][col] = piece
-                if color == RED: self.red_left += 1
-                else: self.white_left += 1
-        self.hash = self._calculate_initial_hash()
-
-    def get_fen(self, compact=False):
-        turn = 'W' if self.turn == WHITE else 'R'
-        r_m, r_k, w_m, w_k = [], [], [], []
-        for r, row in enumerate(self.board):
-            for c, p in enumerate(row):
-                if p:
-                    pos = COORD_TO_ACF.get((r, c))
-                    if p.color == RED: (r_k if p.king else r_m).append(f"K{pos}" if p.king else str(pos))
-                    else: (w_k if p.king else w_m).append(f"K{pos}" if p.king else str(pos))
-        r_m.sort(key=int); w_m.sort(key=int)
-        r_k.sort(key=lambda x: int(x[1:])); w_k.sort(key=lambda x: int(x[1:]))
-        w_str = "W" + ",".join(w_m) + ("," if w_m and w_k else "") + ",".join(w_k)
-        r_str = "R" + ",".join(r_m) + ("," if r_m and r_k else "") + ",".join(r_k)
-        return f"{turn}:{w_str}:{r_str}"
+    def _move_piece(self, piece, row, col):
+        self.board[piece.row][piece.col], self.board[row][col] = 0, self.board[piece.row][piece.col]
+        piece.move(row, col)
+        if (row == 7 and piece.color == RED) or (row == 0 and piece.color == WHITE):
+            if not piece.king:
+                piece.make_king()
+                if piece.color == RED: self.red_kings += 1
+                else: self.white_kings += 1
 
     def get_piece(self, row, col):
         if 0 <= row < ROWS and 0 <= col < COLS: return self.board[row][col]
         return None
+
+    def create_board(self):
+        self.board = [[0 for _ in range(COLS)] for _ in range(ROWS)]
+        for row in range(ROWS):
+            for col in range(COLS):
+                if (row + col) % 2 == 1:
+                    if row < 3: self.board[row][col] = Piece(row, col, RED)
+                    elif row > 4: self.board[row][col] = Piece(row, col, WHITE)
+        self.red_left = self.white_left = 12
+        self.red_kings = self.white_kings = 0
+
+    def create_board_from_fen(self, fen_string):
+        self.board = [[0 for _ in range(COLS)] for _ in range(ROWS)]
+        self.red_left, self.white_left, self.red_kings, self.white_kings = 0, 0, 0, 0
+        
+        parts = re.match(r"([RW]):(W(?:[K]?\d+,?)+):(R(?:[K]?\d+,?)+)", fen_string)
+        if not parts:
+            board_logger.error(f"Invalid FEN string format: {fen_string}")
+            self.create_board()
+            return
+        
+        turn_char, white_pieces_str, red_pieces_str = parts.groups()
+        self.turn = RED if turn_char == 'R' else WHITE
+        
+        for piece_str in white_pieces_str.strip('W').split(','):
+            if not piece_str: continue
+            is_king = 'K' in piece_str
+            pos = int(piece_str.replace('K', ''))
+            r, c = ACF_TO_COORD[pos]
+            self.board[r][c] = Piece(r, c, WHITE)
+            if is_king: self.board[r][c].make_king(); self.white_kings += 1
+            self.white_left += 1
+
+        for piece_str in red_pieces_str.strip('R').split(','):
+            if not piece_str: continue
+            is_king = 'K' in piece_str
+            pos = int(piece_str.replace('K', ''))
+            r, c = ACF_TO_COORD[pos]
+            self.board[r][c] = Piece(r, c, RED)
+            if is_king: self.board[r][c].make_king(); self.red_kings += 1
+            self.red_left += 1
+
+        self.hash = self._calculate_initial_hash()
+
+    def get_fen(self, compact=False):
+        red_men, red_kings, white_men, white_kings = [], [], [], []
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.get_piece(r, c)
+                if piece:
+                    acf_pos = COORD_TO_ACF.get((r, c))
+                    if piece.color == RED:
+                        if piece.king: red_kings.append(f"K{acf_pos}")
+                        else: red_men.append(str(acf_pos))
+                    else:
+                        if piece.king: white_kings.append(f"K{acf_pos}")
+                        else: white_men.append(str(acf_pos))
+        
+        turn_char = 'R' if self.turn == RED else 'W'
+        white_str = "W" + ",".join(white_kings + white_men)
+        red_str = "R" + ",".join(red_kings + red_men)
+        
+        return f"{turn_char}:{white_str}:{red_str}"
+
+    def draw_squares(self, win):
+        win.fill((40, 40, 40))
+        for row in range(ROWS):
+            for col in range(row % 2, COLS, 2):
+                pygame.draw.rect(win, (120, 120, 120), (row*SQUARE_SIZE, col*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+
+    def remove(self, piece):
+        piece_char = ('R' if piece.king else 'r') if piece.color == RED else ('W' if piece.king else 'w')
+        self.board[piece.row][piece.col] = 0
+        if piece.color == RED: self.red_left -= 1
+        else: self.white_left -= 1
+        return (piece.row, piece.col), piece_char
 
     def winner(self):
         if self.red_left <= 0: return WHITE
         if self.white_left <= 0: return RED
         return None
 
+    def change_turn(self):
+        self.turn = WHITE if self.turn == RED else RED
+
     def apply_move(self, path):
-        # --- CRITICAL FIX: Use deepcopy to prevent object mutation ---
-        new_board = copy.deepcopy(self)
-        start_pos, end_pos = path[0], path[-1]
-        
-        piece = new_board.get_piece(start_pos[0], start_pos[1])
-
-        # --- DEBUGGING TRAP ---
-        assert isinstance(piece, Piece), f"Attempted to move a non-piece at {start_pos}"
-
-        original_king_status = piece.king
-        new_board.board[start_pos[0]][start_pos[1]] = 0
-        new_board.board[end_pos[0]][end_pos[1]] = piece
-        piece.move(end_pos[0], end_pos[1])
-        
-        captured_pieces = []
-        if abs(start_pos[0] - end_pos[0]) >= 2:
-            for i in range(len(path) - 1):
-                r1, c1, r2, c2 = *path[i], *path[i+1]
-                mid_r, mid_c = (r1 + r2) // 2, (c1 + c2) // 2
-                captured = new_board.get_piece(mid_r, mid_c)
-                if captured:
-                    captured_pieces.append((captured, (mid_r, mid_c)))
-                    new_board.board[mid_r][mid_c] = 0
-                    if captured.color == RED: new_board.red_left -= 1
-                    else: new_board.white_left -= 1
-        
-        promoted = False
-        if (end_pos[0] == 0 and piece.color == RED and not original_king_status) or \
-           (end_pos[0] == ROWS - 1 and piece.color == WHITE and not original_king_status):
-            promoted = True
-            piece.make_king()
-            if piece.color == RED: new_board.red_kings += 1
-            else: new_board.white_kings += 1
-            
-        new_board.turn = WHITE if new_board.turn == RED else RED
-        new_board._update_hash(path, captured_pieces, (promoted, original_king_status))
-        
-        # --- DEBUGGING TRAP ---
+        new_board = self.copy()
+        new_board.move(path)
         new_board._validate_board_state("apply_move")
         return new_board
+
+    def move(self, path):
+        piece = self.get_piece(path[0][0], path[0][1])
+        if not piece:
+            board_logger.error(f"Attempted to move a non-existent piece from {path[0]}.")
+            return
+
+        self._move_piece(piece, path[-1][0], path[-1][1])
+        captured_pieces = []
+        if len(path) > 1 and abs(path[0][0] - path[1][0]) == 2:
+            for i in range(len(path) - 1):
+                start_pos, end_pos = path[i], path[i+1]
+                mid_row, mid_col = (start_pos[0] + end_pos[0]) // 2, (start_pos[1] + end_pos[1]) // 2
+                captured_piece = self.get_piece(mid_row, mid_col)
+                if captured_piece:
+                    captured_data = self.remove(captured_piece)
+                    captured_pieces.append(captured_data)
         
+        self.change_turn()
+        self._update_hash(path, captured_pieces)
+
     def get_valid_moves(self, piece):
-        assert isinstance(piece, Piece), f"get_valid_moves called on a non-piece: {piece}"
-        board_logger.debug(f"Getting valid moves for {piece.color} piece at ({piece.row}, {piece.col})")
+      #  board_logger.debug(f"Getting valid moves for {piece.color} piece at ({piece.row}, {piece.col})")
         jumps = self._find_jumps(piece.row, piece.col, piece.king, piece.color, [])
         return jumps if jumps else self._find_simple_moves(piece.row, piece.col, piece.king, piece.color)
 
     def _find_simple_moves(self, r, c, is_king, color):
         moves, dirs = [], [(-1,-1),(-1,1),(1,-1),(1,1)]
         for dr, dc in dirs:
-            if not is_king and ((color == RED and dr == 1) or (color == WHITE and dr == -1)): continue
+            if not is_king and ((color == RED and dr < 0) or (color == WHITE and dr > 0)):
+                continue
             nr, nc = r+dr, c+dc
-            if 0 <= nr < ROWS and 0 <= nc < COLS and not self.get_piece(nr, nc): moves.append([(r,c),(nr,nc)])
+            if 0 <= nr < ROWS and 0 <= nc < COLS and not self.get_piece(nr, nc):
+                moves.append([(r,c),(nr,nc)])
         return moves
 
     def _find_jumps(self, r, c, is_king, color, path):
         paths, curr = [], path + [(r,c)]
         dirs = [(-2,-2),(-2,2),(2,-2),(2,2)]
         for dr, dc in dirs:
-            if not is_king and ((color == RED and dr > 0) or (color == WHITE and dr < 0)): continue
+            if not is_king and ((color == RED and dr < 0) or (color == WHITE and dr > 0)):
+                continue
             nr, nc = r+dr, c+dc
             if 0 <= nr < ROWS and 0 <= nc < COLS and (nr,nc) not in path:
                 mr, mc = (r+nr)//2, (c+nc)//2
                 cap, land = self.get_piece(mr, mc), self.get_piece(nr, nc)
-                if not land and cap and cap.color != color:
-                    temp_b = copy.deepcopy(self) 
-                    temp_b.board[mr][mc] = 0
-                    further = temp_b._find_jumps(nr, nc, is_king, color, curr)
-                    if further: paths.extend(further)
+                if cap and cap.color != color and not land:
+                    # This jump is valid, check for more from this new position
+                    extended_paths = self._find_jumps(nr, nc, is_king, color, curr)
+                    if extended_paths: paths.extend(extended_paths)
                     else: paths.append(curr + [(nr,nc)])
         return paths
