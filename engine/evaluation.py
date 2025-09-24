@@ -21,45 +21,41 @@ for i in range(1, 33):
 # ======================================================================================
 
 V1_CONFIG = {
-    "MATERIAL_MULTIPLIER": 15.0, #already tuned, please do not change. 11/22/2025 MM=15
-    "POSITIONAL_MULTIPLIER": 0.12, #new champ 11/22/2025 2023 by 2 games over .10, beat .13 by 1
-    "BLOCKADE_MULTIPLIER": 0.8, # (.07 tied with .10) (.8 beat .9 by 1 game)
-    "MOBILITY_MULTIPLIER": 0.12, #already tuned, please do not change. 11/22. beat .13 by 2 games.
-    "ADVANCEMENT_MULTIPLIER": 0.07, #champ 11/22/2025 2026 beat .08 by 1 game
-    "MAN_VALUE": 1.7, #current champ, beat 2.0 by 4 games, beat 1.8 by 5 games.
-    "KING_VALUE": 2.8, #current champ
+    "MATERIAL_MULTIPLIER": 3.0, 
+    "POSITIONAL_MULTIPLIER": 0.42, 
+    "BLOCKADE_MULTIPLIER": 0.7, 
+    "MOBILITY_MULTIPLIER": 0.12, 
+    "ADVANCEMENT_MULTIPLIER": 0.07, 
+    "PATHS_TO_KING_MULTIPLIER": 0.7,
+    "MAN_VALUE": 1.7, 
+    "KING_VALUE": 2.8, 
     "FIRST_KING_BONUS": 25.0, #beat 50 by 1 game, tied with 30 & 20, beat 5 by 1 game 11/23/2025
     "SIMPLIFICATION_BONUS": 0.1, #champ beat .05 by 1 game and .15 by 1 game 11/23/2025
     "BLOCKADE_SCORE": 9.0 #beat 10 by 3 games. tied with 8.
 }
 
 V2_CONFIG = {
-    "MATERIAL_MULTIPLIER": 15.0, #already tuned
-    "POSITIONAL_MULTIPLIER": 0.12, #already tuned
-    "BLOCKADE_MULTIPLIER": 0.8, #begin tuning from 1.0 upwards, 1.5 lost by 11 games, 1.2 lost by 5 games, .10 and .07 tied,.8 beat .9
-    "MOBILITY_MULTIPLIER": 0.12, # between .12-.13 for future testing, tuned enough for now
-    "ADVANCEMENT_MULTIPLIER": 0.07, #already tuned
-    "MAN_VALUE": 1.7, #try between 1.2-1.6 later
-    "KING_VALUE": 2.8, #change last
-    "FIRST_KING_BONUS": 25.0, #50 lost to 25 by 1 game. 30 tied with 25. 20 also tied with 25. 25 beat 5 by 1 game
-    "SIMPLIFICATION_BONUS": 0.1, #(.5 lost to .05 by 2 games)(.15 lost to .1 by 1 game)
-    "BLOCKADE_SCORE": 9.0 #begin from 15 down, 20 got beat by 9 games. 10 got beat by 1 game by 9. 8 vs 9 tied.
+    "MATERIAL_MULTIPLIER": 2.0,   #starting with 3   
+    "POSITIONAL_MULTIPLIER": 0.42,   
+    "BLOCKADE_MULTIPLIER": 0.7,    
+    "MOBILITY_MULTIPLIER": 0.12,     
+    "ADVANCEMENT_MULTIPLIER": 0.07, 
+    "PATHS_TO_KING_MULTIPLIER": 0.7, 
+    "MAN_VALUE": 1.7,
+    "KING_VALUE": 2.8,
+    "FIRST_KING_BONUS": 20.0,
+    "SIMPLIFICATION_BONUS": 0.25,   
+    "BLOCKADE_SCORE": 12.0          
 }
-#left is first king bonus=5, right simp bonus =.15
+#left is NONE, right mat mul =3
 def _calculate_score(board, config):
-    """
-    Refactored evaluation logic to accept a configuration dictionary.
-    """
-    material_score = 0
-    positional_score = 0
-    advancement_score = 0
+    material_score, positional_score, advancement_score = 0, 0, 0
     red_men, white_men, red_kings, white_kings = [], [], [], []
 
     for r in range(ROWS):
         for c in range(COLS):
             piece = board.get_piece(r, c)
-            if not piece:
-                continue
+            if not piece: continue
 
             acf_pos = COORD_TO_ACF.get((r, c), 0)
             if piece.color == RED:
@@ -89,11 +85,33 @@ def _calculate_score(board, config):
             if not temp_board.get_valid_moves(piece):
                 blockade_score -= config["BLOCKADE_SCORE"]
 
+    # --- Paths to King Score Calculation ---
+    paths_to_king_score = 0
+    for r in range(ROWS):
+        for c in range(COLS):
+            piece = board.get_piece(r, c)
+            if piece and not piece.king:
+                if piece.color == RED:
+                    # --- FIX: Added boundary checks ---
+                    path1_clear = (r + 1 < ROWS and c - 1 >= 0 and not board.get_piece(r + 1, c - 1))
+                    path2_clear = (r + 1 < ROWS and c + 1 < COLS and not board.get_piece(r + 1, c + 1))
+                    # ---------------------------------
+                    if path1_clear and path2_clear: paths_to_king_score += (r * 0.2)
+                    elif path1_clear or path2_clear: paths_to_king_score += (r * 0.1)
+                else: # Piece is WHITE
+                    # --- FIX: Added boundary checks ---
+                    path1_clear = (r - 1 >= 0 and c - 1 >= 0 and not board.get_piece(r - 1, c - 1))
+                    path2_clear = (r - 1 >= 0 and c + 1 < COLS and not board.get_piece(r - 1, c + 1))
+                    # ---------------------------------
+                    advancement = 7 - r
+                    if path1_clear and path2_clear: paths_to_king_score -= (advancement * 0.2)
+                    elif path1_clear or path2_clear: paths_to_king_score -= (advancement * 0.1)
+
     temp_board = board.copy()
     temp_board.turn = RED
-    red_moves = _get_all_moves_for_color(temp_board)
+    red_moves = _get_all_moves_for_color(temp_board, None, [])
     temp_board.turn = WHITE
-    white_moves = _get_all_moves_for_color(temp_board)
+    white_moves = _get_all_moves_for_color(temp_board, None, [])
     mobility_score = len(red_moves) - len(white_moves)
 
     first_king_bonus = 0
@@ -113,12 +131,12 @@ def _calculate_score(board, config):
         (blockade_score * config["BLOCKADE_MULTIPLIER"]) +
         (mobility_score * config["MOBILITY_MULTIPLIER"]) +
         (advancement_score * config["ADVANCEMENT_MULTIPLIER"]) +
+        (paths_to_king_score * config["PATHS_TO_KING_MULTIPLIER"]) +
         first_king_bonus +
         simplification_bonus
     )
     
     eval_logger.debug(f"Raw score (Red's perspective): {final_score:.4f}")
-
     return final_score if board.turn == RED else -final_score
 
 

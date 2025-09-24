@@ -77,20 +77,21 @@ class App:
 
 
 if __name__ == '__main__':
-    # --- This is the corrected main execution block ---
-    mp.freeze_support() # Important for multiprocessing on Windows
+    mp.freeze_support()
     parser = argparse.ArgumentParser(description="A checkers engine with analysis tools.")
-    
-    # Add your existing parser arguments
+
+    # Add your existing parser arguments for logging
     for name in LOGGERS:
         parser.add_argument(f'--debug-{name}', action='store_true', help=f'Enable DEBUG logging for the {name} module.')
 
+    # --- THIS IS THE FIX ---
+    # Add the missing --depth argument that the game engine expects
+    parser.add_argument('--depth', type=int, default=5, help='Set the AI search depth for the game.')
+    # -----------------------
+
     args = parser.parse_args()
-    
-    # Setup logging first
     setup_logging(args)
 
-    # Create and run the application
     main_app = App(args)
     main_app.run()
 

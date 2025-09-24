@@ -1,43 +1,45 @@
 # engine/constants.py
 import pygame
-from .zobrist import generate_zobrist_keys 
 
-FPS = 60
-DEFAULT_AI_DEPTH = 5
-BOARD_SIZE = 600
-SIDE_PANEL_WIDTH = 200
-INFO_WIDTH = 220
-SCREEN_WIDTH=800
-WIDTH, HEIGHT = BOARD_SIZE + INFO_WIDTH, BOARD_SIZE + 120
+# --- UI Layout & Dimensions ---
+SCREEN_WIDTH, SCREEN_HEIGHT = 1000, 850
+BOARD_SIZE = 700
+
+BOARD_RECT = pygame.Rect(0, 0, BOARD_SIZE, BOARD_SIZE)
+SIDE_MENU_WIDTH = SCREEN_WIDTH - BOARD_SIZE
+SIDE_MENU_RECT = pygame.Rect(BOARD_SIZE, 0, SIDE_MENU_WIDTH, SCREEN_HEIGHT)
+DEV_PANEL_HEIGHT = SCREEN_HEIGHT - BOARD_SIZE
+DEV_PANEL_RECT = pygame.Rect(0, BOARD_SIZE, BOARD_SIZE, DEV_PANEL_HEIGHT)
+
+# --- Board Dimensions ---
 ROWS, COLS = 8, 8
-SCREEN_HEIGHT = 800
-SQUARE_SIZE = BOARD_SIZE // ROWS
-# --- Zobrist Hashing Keys ---
-# This generates a unique set of random keys every time the program starts.
-ZOBRIST_KEYS = generate_zobrist_keys()
+SQUARE_SIZE = BOARD_SIZE // COLS
 
-RED = 'red'
-WHITE = 'white'
-# --- Pygame Display Colors ---
-# Use these RGB tuples ONLY for drawing things on the screen.
-COLOR_RED = (255, 0, 0)
-COLOR_WHITE = (255, 255, 255)
-PLAYER_NAMES = {RED: 'Red', WHITE: 'White'}
-COLOR_CROWN = (255, 215, 0)
-COLOR_TEXT = (255, 255, 255)
-COLOR_BG = (20, 20, 20)
-COLOR_BUTTON = (100, 100, 100)
-COLOR_BUTTON_HOVER = (150, 150, 150)
-BLACK = (0, 0, 0)
-GREY = (128, 128, 128)
-YELLOW = (255, 255, 0) 
-COORD_TO_ACF = {}
-ACF_TO_COORD = {}
-DARK_YELLOW = (200, 200, 0)
-square_num = 1
+# --- Game Logic & Colors ---
+DEFAULT_AI_DEPTH = 5
+RED, WHITE = 'red', 'white'
+
+# --- FIX: Updated background colors to a more silver hue ---
+COLOR_BG = (50, 50, 50)          # Dark grey for the main window background
+COLOR_PANEL_BG = (65, 65, 65)    # Slightly lighter grey for the side menu
+COLOR_DEV_PANEL_BG = (85, 85, 85) # Even lighter grey for the developer panel
+# -----------------------------------------------------------
+
+COLOR_TEXT = (248, 248, 242)     # White/off-white for text
+COLOR_BUTTON = (90, 90, 90)      # Medium grey for buttons
+COLOR_BUTTON_HOVER = (110, 110, 110) # Lighter grey for button hover
+COLOR_SQUARE_DARK = (55, 55, 55) # Dark checkerboard squares (can remain distinct)
+COLOR_SQUARE_LIGHT = (180, 180, 180) # Light checkerboard squares
+DARK_YELLOW = (200, 180, 0)      # Highlight color (can remain)
+GREY = (128, 128, 128)           # General grey
+COLOR_RED = (255, 85, 85)        # Red pieces (can remain)
+COLOR_WHITE = (248, 248, 242)    # White pieces (can remain)
+
+# --- Board Mapping (ACF Notation) ---
+ACF_TO_COORD, COORD_TO_ACF = {}, {}
+num = 1
 for r in range(ROWS):
     for c in range(COLS):
         if (r + c) % 2 == 1:
-            COORD_TO_ACF[(r, c)] = square_num
-            ACF_TO_COORD[square_num] = (r, c)
-            square_num += 1
+            ACF_TO_COORD[num], COORD_TO_ACF[(r, c)] = (r, c), num
+            num += 1
