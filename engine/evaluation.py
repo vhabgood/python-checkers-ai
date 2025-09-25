@@ -21,31 +21,31 @@ for i in range(1, 33):
 # ======================================================================================
 
 V1_CONFIG = {
-    "MATERIAL_MULTIPLIER": 3.0, 
+    "MATERIAL_MULTIPLIER": 3.3, #tuned 11/24/2025.
     "POSITIONAL_MULTIPLIER": 0.42, 
     "BLOCKADE_MULTIPLIER": 0.7, 
     "MOBILITY_MULTIPLIER": 0.12, 
     "ADVANCEMENT_MULTIPLIER": 0.07, 
-    "PATHS_TO_KING_MULTIPLIER": 0.7,
-    "MAN_VALUE": 1.7, 
-    "KING_VALUE": 2.8, 
+    "PATHS_TO_KING_MULTIPLIER": 0.8, #beat .5 & .7
+    "MAN_VALUE": 1, #don't adjust. Base value
+    "KING_VALUE": 1.6, #don't adjust Base value
     "FIRST_KING_BONUS": 25.0, #beat 50 by 1 game, tied with 30 & 20, beat 5 by 1 game 11/23/2025
     "SIMPLIFICATION_BONUS": 0.1, #champ beat .05 by 1 game and .15 by 1 game 11/23/2025
     "BLOCKADE_SCORE": 9.0 #beat 10 by 3 games. tied with 8.
 }
 
 V2_CONFIG = {
-    "MATERIAL_MULTIPLIER": 2.0,   #starting with 3   
-    "POSITIONAL_MULTIPLIER": 0.42,   
-    "BLOCKADE_MULTIPLIER": 0.7,    
+    "MATERIAL_MULTIPLIER": 2.0,
+    "POSITIONAL_MULTIPLIER": 0.32,   
+    "BLOCKADE_MULTIPLIER": 0.2,    
     "MOBILITY_MULTIPLIER": 0.12,     
     "ADVANCEMENT_MULTIPLIER": 0.07, 
-    "PATHS_TO_KING_MULTIPLIER": 0.7, 
-    "MAN_VALUE": 1.7,
-    "KING_VALUE": 2.8,
-    "FIRST_KING_BONUS": 20.0,
+    "PATHS_TO_KING_MULTIPLIER": 0.45, 
+    "MAN_VALUE": 1,
+    "KING_VALUE": 1.6,
+    "FIRST_KING_BONUS": 3.0,
     "SIMPLIFICATION_BONUS": 0.25,   
-    "BLOCKADE_SCORE": 12.0          
+    "BLOCKADE_SCORE": 1.0          
 }
 #left is NONE, right mat mul =3
 def _calculate_score(board, config):

@@ -1,70 +1,61 @@
 # engine/egdb.py
-import ctypes
-import logging
-import os
-from .constants import RED, WHITE
+import ctypes, logging, os, platform
+from .constants import RED, WHITE, ROWS, COLS
 
 logger = logging.getLogger('egdb')
+DB_WIN, DB_LOSS, DB_DRAW, DB_UNKNOWN = 1, 2, 3, 0
 
-# --- Define constants from egdb.h for clarity ---
-EGDB_WIN = 1
-EGDB_LOSS = 2
-EGDB_DRAW = 3
-EGDB_UNKNOWN = 0
-EGDB_NORMAL = 0 # Bitboard type
+class Position(ctypes.Structure):
+    _fields_ = [("bm", ctypes.c_uint), ("bk", ctypes.c_uint), ("wm", ctypes.c_uint), ("wk", ctypes.c_uint)]
 
-# --- Load the EGDB Driver Library ---
+EGDB_DLL, initlookup, lookup = None, None, None
 try:
-    # This assumes egdb64.dll is in the project's root directory
-    dll_path = "egdb64.dll"
-    if not os.path.exists(dll_path):
-        # Fallback for running from within the engine directory
-        dll_path = os.path.join(os.path.dirname(__file__), '..', 'egdb64.dll')
-
+    lib_name = "egdb64.so" if platform.system() != "Windows" else "egdb64.dll"
+    dll_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', lib_name)
+    assert os.path.exists(dll_path), f"{lib_name} not found."
     EGDB_DLL = ctypes.CDLL(dll_path)
-    logger.info("Successfully loaded egdb64.dll")
+    logger.info(f"Successfully loaded {lib_name}")
 
-except OSError as e:
-    logger.error(f"Could not load egdb64.dll. Make sure it's in your project's root directory. Error: {e}")
+    initlookup = EGDB_DLL.initlookup
+    initlookup.restype, initlookup.argtypes = ctypes.c_int, [ctypes.c_char_p]
+
+    lookup = EGDB_DLL.lookup
+    lookup.restype, lookup.argtypes = ctypes.c_int, [ctypes.POINTER(Position), ctypes.c_int]
+
+    # Pass the path to the 'db' directory to the C library
+    db_path = os.path.join(os.path.dirname(dll_path), 'db')
+    initlookup(db_path.encode('utf-8'))
+
+except Exception as e:
+    logger.error(f"Could not load/initialize EGDB library. EGDB disabled. Error: {e}")
     EGDB_DLL = None
 
-# ======================================================================================
-# --- STEP 2: Define C Structures and Function Prototypes ---
-# ======================================================================================
+BIT_MAP = {(r, c): (r * 4 + (c // 2)) for r, c in [(r,c) for r in range(8) for c in range(8)]}
 
-# --- C Structures, replicated as Python classes ---
-# This mirrors the EGDB_NORMAL_BITBOARD struct from egdb.h
-class EGDB_NORMAL_BITBOARD(ctypes.Structure):
-    _fields_ = [
-        ("black_man", ctypes.c_uint),
-        ("white_man", ctypes.c_uint),
-        ("black_king", ctypes.c_uint),
-        ("white_king", ctypes.c_uint),
-    ]
+def board_to_egdb_struct(board):
+    # ... (this function is unchanged)
+    pos = Position()
+    pos.bm, pos.bk, pos.wm, pos.wk = 0, 0, 0, 0
+    for r in range(ROWS):
+        for c in range(COLS):
+            piece = board.get_piece(r, c)
+            if piece:
+                bit_pos = BIT_MAP.get((r, c))
+                if bit_pos is not None:
+                    bit = 1 << bit_pos
+                    if piece.color == RED:
+                        if piece.king: pos.bk |= bit
+                        else: pos.bm |= bit
+                    else:
+                        if piece.king: pos.wk |= bit
+                        else: pos.wm |= bit
+    return pos
 
-# This mirrors the EGDB_BITBOARD union from egdb.h
-class EGDB_BITBOARD(ctypes.Union):
-    _fields_ = [
-        ("normal", EGDB_NORMAL_BITBOARD),
-        # The C union has another member, 'row_reversed', but we only need 'normal'
-    ]
-
-# The EGDB_DRIVER struct is opaque to us (we just use a pointer to it),
-# so we don't need to define its fields.
-class EGDB_DRIVER(ctypes.Structure):
-    pass
-
-# --- C Function Prototypes ---
-# This tells ctypes what the arguments and return types are for each C function we will use.
-if EGDB_DLL:
-    # EGDB_API EGDB_DRIVER *__cdecl egdb_open(...)
-    egdb_open = EGDB_DLL.egdb_open
-    egdb_open.restype = ctypes.POINTER(EGDB_DRIVER)
-    egdb_open.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_void_p]
-
-    # int (__cdecl *lookup)(struct egdb_driver *handle, EGDB_BITBOARD *position, int color, int cl);
-    # This function is called through a function pointer inside the EGDB_DRIVER struct.
-    # We will define this part later when we wrap the driver object.
-
-    # int (__cdecl *close)(struct egdb_driver *handle);
-    # Also a function pointer in the struct.
+class EGDBDriver:
+    def __init__(self):
+        self.initialized = bool(EGDB_DLL and lookup)
+    def probe(self, board):
+        if not self.initialized: return DB_UNKNOWN
+        pos_struct = board_to_egdb_struct(board)
+        color = 0 if board.turn == RED else 1
+        return lookup(ctypes.byref(pos_struct), color)
