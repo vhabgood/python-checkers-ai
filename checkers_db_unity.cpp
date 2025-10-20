@@ -271,17 +271,40 @@ extern "C" {
         memset(database, 0, sizeof(database));
         return 0;
     }
-
+    
+// Add a function to close the log file when the program exits.
+void db_close() {
+        if (c_debug_log) {
+            fclose(c_debug_log);
+            c_debug_log = NULL;
+        }
+    }
+    // --------------------
 int EGDB_lookup(int* R, uint32_t bm, uint32_t bk, uint32_t wm, uint32_t wk, int color, int* mtc) {
         if (c_debug_log) {
             fprintf(c_debug_log, "[C++ EGDB_lookup] --> Received Request\n");
             fprintf(c_debug_log, "  - Color: %d\n", color);
             fprintf(c_debug_log, "  - Bitboards: bm=%u, bk=%u, wm=%u, wk=%u\n", bm, bk, wm, wk);
         }
-        
+
+        // --- SUGGESTED IMPLEMENTATION ---
+        // Pre-check the number of pieces before calling the internal lookup.
+        // This provides a clear, early exit for invalid queries.
+        int total_pieces = bitcount(bm) + bitcount(bk) + bitcount(wm) + bitcount(wk);
+        if (total_pieces > 7 || total_pieces < 2) {
+            *R = DB_UNAVAILABLE;
+            *mtc = 0;
+            if (c_debug_log) {
+                fprintf(c_debug_log, "[C++ EGDB_lookup] <-- Pre-check failed. Invalid number of pieces. Sending UNAVAILABLE.\n");
+                fflush(c_debug_log);
+            }
+            return 1; // Indicate success, even though it was a "fail-fast"
+        }
+        // --- END OF SUGGESTED IMPLEMENTATION ---
+
         position p = {bm, bk, wm, wk};
         *R = internal_db_lookup(&p, mtc, color);
-        
+
         if (c_debug_log) {
             fprintf(c_debug_log, "[C++ EGDB_lookup] <-- Sending Response\n");
             fprintf(c_debug_log, "  - Result: %d, MTC: %d\n", *R, *mtc);
