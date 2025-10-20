@@ -46,25 +46,30 @@ class EGDBDriver:
         except Exception as e:
             self.logger.error(f"EGDB: Failed to load or initialize library: {e}", exc_info=True)
             self.initialized = False
+
     def board_to_pos(self, board):
-        """Converts a Board object to a C-level CPosition struct."""
-        bm = bk = wm = wk = 0
-        for i in range(1, 33):
-            row, col = ACF_TO_COORD[i]
-            piece = board.get_piece(row, col)
-            if piece:
-                mask = 1 << (i - 1)
-                if piece.color == RED:
-                    if piece.king:
-                        bk |= mask
-                    else:
-                        bm |= mask
-                else: # WHITE
-                    if piece.king:
-                        wk |= mask
-                    else:
-                        wm |= mask
+        """Converts a board object to a C-compatible CPosition struct."""
+        bm, bk, wm, wk = 0, 0, 0, 0  # Initialize all to zero
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = board.get_piece(r, c)
+                if piece is not None:
+                    acf_pos = COORD_TO_ACF.get((r, c))
+                    if acf_pos:
+                        bit_idx = acf_pos - 1
+                        mask = 1 << bit_idx
+                        if piece.color == RED:
+                            if piece.king:
+                                bk |= mask
+                            else:
+                                bm |= mask
+                        else:  # WHITE
+                            if piece.king:
+                                wk |= mask
+                            else:
+                                wm |= mask
         return CPosition(bm, bk, wm, wk)
+        
     def _setup_c_functions(self, db_path):
         """Defines the argument and return types for the C++ functions."""
         init_func = self.lib.db_init
