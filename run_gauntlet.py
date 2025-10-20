@@ -4,6 +4,7 @@
 
 import argparse
 import logging
+import os
 from engine.board import Board
 from engine.evaluation import evaluate_board_v1, evaluate_board_v2_experimental
 from engine.debug import setup_logging, LOGGERS
@@ -64,8 +65,8 @@ class HeadlessGame:
 def run_gauntlet(args):
     """Sets up engines, loads positions, and manages the matches."""
     setup_logging(args)
-    
-    egdb_driver = EGDBDriver(db_path=args.egdb_files_path)
+    db_path = os.path.abspath(args.db_path)
+    egdb_driver = EGDBDriver(db_path)
     initialize_search(egdb_driver)
 
     try:

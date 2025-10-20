@@ -118,18 +118,6 @@ class EGDBDriver:
         if not self.initialized:
             return DB_UNAVAILABLE, 0
 
-        # --- SUGGESTED ADDITION ---
-        # Pre-check number of pieces on the Python side to avoid unnecessary C-level calls
-        num_pieces = 0
-        for r in range(ROWS):
-            for c in range(COLS):
-                if board.get_piece(r, c) is not None:
-                    num_pieces += 1
-        
-        if num_pieces > 7 or num_pieces < 2:
-            return DB_UNAVAILABLE, 0
-        # --- END OF SUGGESTED ADDITION ---
-
         # This part is correct
         c_pos = self.board_to_pos(board)
         color_code = 2 if board.turn == RED else 1
