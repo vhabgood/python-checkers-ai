@@ -65,8 +65,8 @@ class HeadlessGame:
 def run_gauntlet(args):
     """Sets up engines, loads positions, and manages the matches."""
     setup_logging(args)
-    db_path = os.path.abspath(args.db_path)
-    egdb_driver = EGDBDriver(db_path)
+    db_directory = os.path.abspath("./db")
+    egdb_driver = EGDBDriver(db_directory)
     initialize_search(egdb_driver)
 
     try:
