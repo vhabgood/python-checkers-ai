@@ -13,8 +13,10 @@ __pycache__/
 *.csv
 *.cpr
 *.idx
+*.mtc
 *.so
 logs/
+db/
 
 # Database Files
 checkers_database.db

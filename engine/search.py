@@ -1,203 +1,259 @@
 # engine/search.py
+# This file contains the core AI logic, including the Principal Variation Search
+# (PVS) algorithm and the integration with the endgame database (EGDB).
+
+import random
 import logging
-from .constants import RED, WHITE, ROWS, COLS, COORD_TO_ACF
-import copy
-from . import egdb # Import our egdb module
+from .constants import (RED, WHITE, ROWS, COLS, COORD_TO_ACF, 
+                      DB_WIN, DB_LOSS, DB_DRAW, DB_UNAVAILABLE, DB_UNKNOWN, RESULT_MAP)
+from .board import Board
 
+# --- Globals & Initialization ---
 search_logger = logging.getLogger('search')
-
-# --- Global variables for search ---
 transposition_table = {}
 killer_moves = [[(None, None)] * 2 for _ in range(15)]
-principal_variation_table = {}
+history_heuristic = {}
+egdb_driver = None
 
-# --- EGDB Driver Initialization ---
-egdb_driver = egdb.EGDBDriver()
+def initialize_search(driver):
+    """Initializes the search module with the EGDB driver."""
+    global egdb_driver
+    egdb_driver = driver
 
-def quiescence_search(board, alpha, beta, evaluate_func):
-    """
-    A specialized search that only explores capture sequences from a given position
-    to ensure the final evaluation is based on a "quiet" board state.
-    """
-    stand_pat_score = evaluate_func(board)
-    if stand_pat_score >= beta:
-        return beta, None
-    if alpha < stand_pat_score:
-        alpha = stand_pat_score
-
-    # Only generate and look at capture moves
-    moves = _get_all_moves_for_color(board, None, [])
-    is_jump = any(abs(move[0][0] - move[1][0]) == 2 for move in moves) if moves else False
-    
-    if not is_jump:
-        return alpha, None # If no captures, return the static evaluation
-
-    for move in moves:
-        move_board = board.apply_move(move)
-        score, _ = quiescence_search(move_board, -beta, -alpha, evaluate_func)
-        score = -score
-        
-        if score >= beta:
-            return beta, None
-        if score > alpha:
-            alpha = score
-            
-    return alpha, None
-
+# --- Helper Functions ---
 def _format_move_for_log(path):
+    """Formats a move path for logging."""
     if not path: return "None"
     sep = 'x' if abs(path[0][0] - path[1][0]) == 2 else '-'
     return sep.join(str(COORD_TO_ACF.get(pos, "??")) for pos in path)
 
-def clear_search_data():
-    global transposition_table, killer_moves, principal_variation_table
-    transposition_table, killer_moves, principal_variation_table = {}, [[(None, None)] * 2 for _ in range(15)], {}
+# --- Endgame Database (EGDB) Logic ---
+def _handle_egdb_hit(result, mtc, board, history_hashes):
+    """Determines the best move based on a definitive EGDB result."""
+    outcomes = []
+    legal_moves = board.get_all_valid_moves(board.turn)
+    if not legal_moves:
+        return None
 
-def _get_all_moves_for_color(board, pv_move, killers):
-    # ... (This function remains unchanged)
-    all_jumps, all_simple_moves = [], []
-    for r in range(ROWS):
-        for c in range(COLS):
-            piece = board.get_piece(r, c)
-            if piece and piece.color == board.turn:
-                valid_moves = board.get_valid_moves(piece)
-                if not valid_moves: continue
-                is_jump = abs(valid_moves[0][0][0] - valid_moves[0][1][0]) == 2
-                if is_jump: all_jumps.extend(valid_moves)
-                else: all_simple_moves.extend(valid_moves)
-    if all_jumps:
-        all_jumps.sort(key=len, reverse=True)
-        return all_jumps
-    ordered_moves = []
-    if pv_move and pv_move in all_simple_moves: ordered_moves.append(pv_move)
-    for move in killers:
-        if move and move in all_simple_moves and move not in ordered_moves: ordered_moves.append(move)
-    for move in all_simple_moves:
-        if move not in ordered_moves: ordered_moves.append(move)
-    return ordered_moves
-
-def find_egdb_winning_move(board):
-    """
-    Finds a move that leads to a position recognized by the EGDB as a loss
-    for the opponent. This ensures the engine stays on the winning path.
-    """
-    moves = _get_all_moves_for_color(board, None, [])
-    winning_moves = []
-    
-    for move in moves:
-        # Create a new board state for the position *after* our move
+    for move in legal_moves:
         next_board = board.apply_move(move)
-        
-        # Now, from this new position, it's the opponent's turn.
-        # We probe the database to see if their position is a loss.
-        result = egdb_driver.probe(next_board)
-        
-        # If the database says the opponent is in a losing position, this is a good move.
-        if result == egdb.DB_LOSS:
-            winning_moves.append(move)
-            
-    # We can return any of the winning moves. Returning the first one is simplest.
-    if winning_moves:
-        return winning_moves[0]
-        
-    # As a fallback, if no move leads to a direct known win (which is rare
-    # in a winning endgame), just make any valid move to continue.
-    return moves[0] if moves else None
+        res, next_mtc = egdb_driver.probe(next_board)
+        outcomes.append({'move': move, 'res': res, 'mtc': next_mtc, 'hash': next_board.get_hash()})
 
-def get_ai_move_analysis(board, depth, result_queue, evaluate_func):
-    clear_search_data()
-    
-    total_pieces = board.red_left + board.white_left
-    
-    # --- FIX: Add a check to ensure the position has no captures before probing ---
-    # The EGDB documentation explicitly forbids probing positions with pending captures.
-    all_moves = _get_all_moves_for_color(board, None, [])
-    is_tactical = any(abs(move[0][0] - move[1][0]) == 2 for move in all_moves) if all_moves else False
+    best_move = None
 
-    # --- CHANGE: Target 7 pieces to match your available database files ---
-    # Only probe if the piece count is in range AND it's a quiet position (no jumps).
-    if total_pieces <= 8 and not is_tactical and egdb_driver.initialized:
-    # --------------------------------------------------------------------------
-        search_logger.info(f"Piece count ({total_pieces}) is within EGDB range. Probing...")
-        result = egdb_driver.probe(board)
-        
-        if result in [egdb.DB_WIN, egdb.DB_LOSS, egdb.DB_DRAW]:
-            search_logger.info(f"EGDB Result found: {['UNKNOWN','WIN','LOSS','DRAW'][result]}. Finding best move...")
-            if result == egdb.DB_WIN:
-                best_move, score = find_egdb_winning_move(board), 9999
-            else:
-                moves = _get_all_moves_for_color(board, None, [])
-                best_move = moves[0] if moves else None
-                score = -9999 if result == egdb.DB_LOSS else 0
-            
-            top_moves = [(best_move, score)]
-            if result_queue: result_queue.put(top_moves)
-            else: return score, best_move
-            return
-
-    # If no EGDB hit, proceed with the normal search
-    top_moves = []
-    for i in range(1, depth + 1):
-        top_moves = _pvs_search_top_moves(board, i, evaluate_func)
-        if top_moves:
-            principal_variation_table[board.get_hash()] = top_moves[0][0]
-
-    best_move_info = top_moves[0] if top_moves else (None, -float('inf'))
-    log_move_str = _format_move_for_log(best_move_info[0])
-    search_logger.debug(f"Search complete. Best move: {log_move_str} with score: {best_move_info[1]:.4f}")
-    
-    if result_queue: result_queue.put(top_moves)
-    else: return best_move_info[1], best_move_info[0]
-
-def _pvs_search_top_moves(board, depth, evaluate_func):
-    pv_move = principal_variation_table.get(board.get_hash())
-    moves = _get_all_moves_for_color(board, pv_move, killer_moves[depth])
-    if not moves: return []
-    scored_moves = []
-    for move in moves:
-        move_board = board.apply_move(move)
-        score, _ = _pvs_search_recursive(move_board, depth - 1, -float('inf'), float('inf'), evaluate_func, depth - 1)
-        scored_moves.append((move, -score))
-    scored_moves.sort(key=lambda item: item[1], reverse=True)
-    return scored_moves[:5]
-
-def _pvs_search_recursive(board, depth, alpha, beta, evaluate_func, ply):
-    hash_key = board.get_hash()
-    if hash_key in transposition_table and transposition_table[hash_key]['depth'] >= depth:
-        entry = transposition_table[hash_key]
-        if entry['flag'] == 'EXACT': return entry['score'], entry['best_move']
-        elif entry['flag'] == 'LOWERBOUND': alpha = max(alpha, entry['score'])
-        elif entry['flag'] == 'UPPERBOUND': beta = min(beta, entry['score'])
-        if alpha >= beta: return entry['score'], entry['best_move']
-    if depth <= 0 or board.winner() is not None:
-        return quiescence_search(board, alpha, beta, evaluate_func)
-    pv_move = principal_variation_table.get(board.get_hash())
-    moves = _get_all_moves_for_color(board, pv_move, killer_moves[ply])
-    if not moves: return -float('inf'), None
-    best_move = moves[0]
-    for i, move in enumerate(moves):
-        move_board = board.apply_move(move)
-        if i == 0:
-            score, _ = _pvs_search_recursive(move_board, depth - 1, -beta, -alpha, evaluate_func, ply - 1)
-            score = -score
+    # Case 1: The current position is a WIN. Find the fastest winning move.
+    if result == DB_WIN:
+        # A winning move is one that leads to a LOSS for the opponent. Sort by MTC to find the fastest win.
+        winning_moves = sorted([o for o in outcomes if o['res'] == DB_LOSS], key=lambda x: x['mtc'])
+        if winning_moves:
+            best_mtc = winning_moves[0]['mtc']
+            # In case of ties, randomly pick one of the best moves.
+            best_options = [o['move'] for o in winning_moves if o['mtc'] == best_mtc]
+            best_move = random.choice(best_options)
+            search_logger.info(f"EGDB (in WIN): Found move forcing a loss (MTC {best_mtc}): {_format_move_for_log(best_move)}")
         else:
-            score, _ = _pvs_search_recursive(move_board, depth - 1, -alpha - 1, -alpha, evaluate_func, ply - 1)
-            score = -score
-            if alpha < score < beta:
-                score, _ = _pvs_search_recursive(move_board, depth - 1, -beta, -score, evaluate_func, ply - 1)
-                score = -score
-        if score > alpha:
-            alpha = score
-            best_move = move
-            principal_variation_table[board.get_hash()] = best_move
+            # If no move forces a loss, maintain the win by finding a non-repeating draw.
+            drawing_moves = [o['move'] for o in outcomes if o['res'] == DB_DRAW and o['hash'] not in history_hashes]
+            if drawing_moves:
+                best_move = random.choice(drawing_moves)
+                search_logger.info(f"EGDB (in WIN): Found move maintaining win via draw: {_format_move_for_log(best_move)}")
+
+    # Case 2: The current position is a DRAW.
+    elif result == DB_DRAW:
+        # First, see if the opponent blundered and offered a win.
+        winning_moves = sorted([o for o in outcomes if o['res'] == DB_LOSS], key=lambda x: x['mtc'])
+        if winning_moves:
+            best_mtc = winning_moves[0]['mtc']
+            best_options = [o['move'] for o in winning_moves if o['mtc'] == best_mtc]
+            best_move = random.choice(best_options)
+            search_logger.info(f"EGDB (in DRAW): Opponent blundered. Taking win (MTC {best_mtc}): {_format_move_for_log(best_move)}")
+        else:
+            # Otherwise, find a non-repeating move that maintains the draw.
+            drawing_moves = [o for o in outcomes if o['res'] == DB_DRAW]
+            non_repeating_draws = [o['move'] for o in drawing_moves if o['hash'] not in history_hashes]
+            if non_repeating_draws:
+                best_move = random.choice(non_repeating_draws)
+                search_logger.info(f"EGDB (in DRAW): Found non-repeating draw: {_format_move_for_log(best_move)}")
+            elif drawing_moves: # If all drawing moves are repetitions, we must pick one.
+                best_move = random.choice([o['move'] for o in drawing_moves])
+                search_logger.info(f"EGDB (in DRAW): Found drawing move (accepting repetition): {_format_move_for_log(best_move)}")
+
+    # Case 3: The current position is a LOSS. Find the slowest losing move.
+    elif result == DB_LOSS:
+        # Sort all available moves by the opponent's MTC in descending order (longest loss is best).
+        if outcomes:
+            best_moves_by_mtc = sorted(outcomes, key=lambda x: x['mtc'], reverse=True)
+            best_mtc = best_moves_by_mtc[0]['mtc']
+            best_options = [o['move'] for o in best_moves_by_mtc if o['mtc'] == best_mtc]
+            best_move = random.choice(best_options)
+            search_logger.info(f"EGDB (in LOSS): Choosing longest loss (MTC {best_mtc}): {_format_move_for_log(best_move)}")
+
+    # If no best move was found by the logic above, fall back.
+    if not best_move and legal_moves:
+        search_logger.warning("EGDB FALLBACK: Could not determine a best move, choosing first legal move.")
+        best_move = legal_moves[0]
+        
+    return best_move
+
+# --- Core AI Search Function ---
+def get_ai_move_analysis(board, depth, result_queue, evaluate_func, history_hashes=None):
+    """Top-level AI interface. Probes EGDB first, then falls back to PVS search."""
+    history_hashes = history_hashes or []
+    
+    if egdb_driver and egdb_driver.initialized:
+        result, mtc = egdb_driver.probe(board)
+        
+        if result in (DB_WIN, DB_LOSS, DB_DRAW):
+            # FIX: Converted print to logger.debug
+            search_logger.debug(f"[TRACE 1] EGDB HIT. Result is {RESULT_MAP.get(result)}. Calling _handle_egdb_hit...")
+            best_move = _handle_egdb_hit(result, mtc, board, history_hashes)
+            # FIX: Converted print to logger.debug
+            search_logger.debug(f"[TRACE 2] _handle_egdb_hit returned: {best_move}")
+
+            score = 9999 if result == DB_WIN else -9999 if result == DB_LOSS else 0
+            move_path = [best_move] if best_move else []
+            
+            if result_queue:
+                result_queue.put([(move_path, score)])
+            
+            # FIX: Converted print to logger.debug
+            search_logger.debug(f"[TRACE 3] Returning from EGDB HIT block with move_path: {move_path}")
+            return score, move_path
+
+    # FIX: Converted print to logger.debug
+    search_logger.debug(f"[TRACE 4] Proceeding to EGDB Fallback...")
+    search_logger.debug(f"EGDB Fallback. Starting PVS search to depth {depth}...")
+    best_move_sequence, best_score = _pvs_search_top(board, depth, evaluate_func) 
+    
+    if result_queue:
+        result_queue.put([(best_move_sequence, best_score)])
+        
+    return best_score, best_move_sequence
+# --- PVS Search Implementation ---
+
+def _pvs_search_top(board, depth, evaluate_func):
+    """
+    The top-level PVS search function.
+    Initializes the search and handles the first level of moves.
+    """
+    global killer_moves, history_heuristic
+    
+    moves = board.get_all_valid_moves(board.turn)
+    search_logger.debug(f"DEBUG: Found {len(moves)} legal moves at root for {board.turn}.")
+    if not moves:
+        search_logger.debug(f"DEBUG: No moves found for {board.turn}. Returning evaluation.")
+        return [], evaluate_func(board) # Return current score if no moves
+
+    best_score = -float('inf')
+    best_move = None
+    
+    # Sort moves using heuristics
+    moves.sort(key=lambda move: history_heuristic.get((board.get_hash(), _format_move_for_log(move)), 0), reverse=True)
+    
+    # Principal Variation Search
+    for i, move in enumerate(moves):
+        new_board = board.apply_move(move)
+        
+        if i == 0:
+            # Full window search for the first move
+            score = -_pvs_search(new_board, depth - 1, -float('inf'), float('inf'), evaluate_func)
+        else:
+            # Null window search for subsequent moves
+            score = -_pvs_search(new_board, depth - 1, -best_score - 1, -best_score, evaluate_func)
+            
+            # Re-search with full window if a better move is found
+            if score > best_score:
+                score = -_pvs_search(new_board, depth - 1, -float('inf'), -score, evaluate_func)
+                
+        if score > best_score:
+            best_score = score
+            best_move= move
+            
+    # FIX: Initialize best_move_sequence with the best_move found after the loop finishes.
+    best_move_sequence = [best_move] if best_move else []  
+    
+    # FIX: The original code returned a single move, but the caller expects a sequence.
+    # Now we return a sequence and a score.   
+    search_logger.debug(f"Search complete. Best move: {_format_move_for_log(best_move)}")
+    return best_move_sequence, best_score
+
+def _pvs_search(board, depth, alpha, beta, evaluate_func):
+    """
+    The core recursive PVS search with alpha-beta pruning.
+    """
+    search_logger.debug(f"DEBUG: PVS search called for {board.turn} at depth {depth}.")
+    if board.winner() or depth == 0:
+        return quiescence_search(board, alpha, beta, evaluate_func)
+
+    moves = board.get_all_valid_moves(board.turn)
+    if not moves:
+        search_logger.debug(f"DEBUG: Leaf node reached for {board.turn} at depth {depth}. No moves.")
+        return evaluate_func(board)
+
+    # Sort moves using heuristics
+    moves.sort(key=lambda move: history_heuristic.get((board.get_hash(), _format_move_for_log(move)), 0), reverse=True)
+
+    for i, move in enumerate(moves):
+        new_board = board.apply_move(move)
+        
+        if i == 0:
+            score = -_pvs_search(new_board, depth - 1, -beta, -alpha, evaluate_func)
+        else:
+            score = -_pvs_search(new_board, depth - 1, -alpha - 1, -alpha, evaluate_func)
+            if score > alpha and score < beta:
+                score = -_pvs_search(new_board, depth - 1, -beta, -alpha, evaluate_func)
+        
+        alpha = max(alpha, score)
         if alpha >= beta:
-            is_jump = abs(move[0][0] - move[1][0]) == 2
-            if not is_jump:
-                killer_moves[ply][1] = killer_moves[ply][0]
-                killer_moves[ply][0] = move
+            # Alpha-beta cutoff. Store this killer move.
+            # FIX: Properly store killer moves
+            if move not in killer_moves[depth]:
+                killer_moves[depth].insert(0, move)
+                killer_moves[depth].pop()
             break
-    flag = 'EXACT'
-    if alpha <= -float('inf'): flag = 'UPPERBOUND'
-    elif alpha >= beta: flag = 'LOWERBOUND'
-    transposition_table[hash_key] = {'score': alpha, 'depth': depth, 'flag': flag, 'best_move': best_move}
-    return alpha, best_move
+    
+    return alpha
+
+def quiescence_search(board, alpha, beta, evaluate_func):
+    """
+    A specialized search to evaluate non-quiescent positions.
+    It only considers captures to avoid the horizon effect.
+    NOW WITH CORRECT EGDB INTEGRATION.
+    """
+    total_pieces = board.red_left + board.white_left
+    if egdb_driver and egdb_driver.initialized and total_pieces <= 10:
+        result, mtc = egdb_driver.probe(board) # <-- GET MTC
+        if result in (DB_WIN, DB_LOSS, DB_DRAW):
+            # If the DB has a definitive result, use it to create a precise score.
+            # The score is from the perspective of the current player to move.
+            if result == DB_WIN:
+                # A faster win (lower mtc) is better. Score is higher.
+                return 10000 - mtc
+            elif result == DB_LOSS:
+                # A longer loss (higher mtc) is better. Score is less negative.
+                return -10000 + mtc
+            else: # DB_DRAW
+                return 0
+
+    # If EGDB has no result, proceed with the original evaluation logic.
+    stand_pat = evaluate_func(board)
+    if stand_pat >= beta:
+        return beta
+    if alpha < stand_pat:
+        alpha = stand_pat
+        
+    moves = board.get_all_valid_moves(board.turn)
+    
+    # Filter for jumps only (captures)
+    jumps = [move for move in moves if abs(move[0][0] - move[1][0]) == 2]
+
+    for move in jumps:
+        new_board = board.apply_move(move)
+        score = -quiescence_search(new_board, -beta, -alpha, evaluate_func)
+        
+        alpha = max(alpha, score)
+        if alpha >= beta:
+            return beta
+
+    return alpha

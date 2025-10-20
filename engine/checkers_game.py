@@ -41,9 +41,11 @@ class CheckersGame:
         self.selected_piece, self.current_move_path, self.valid_moves = None, [], []
         self.winner = None
         self.board_flipped = False
-        # UI
-        self.font = pygame.font.SysFont("Consolas", 18)
+        # --- FIX: Create specific fonts for different UI panels ---
         self.large_font = pygame.font.SysFont("Consolas", 24)
+        self.history_font = pygame.font.SysFont("Consolas", 16) # Slightly smaller for move history
+        self.dev_font = pygame.font.SysFont("Consolas", 15)     # Smaller font for the dev panel
+        # ---------------------------------------------------------
         self.done, self.next_state = False, None
         self._create_buttons()
         self._update_game_state_from_history()
@@ -116,30 +118,47 @@ class CheckersGame:
             text = f"{turn_num}. {red_move_str}"
             is_current = (i == self.history_index - 1)
             color = constants.DARK_YELLOW if is_current else constants.COLOR_TEXT
-            move_surf = self.font.render(text, True, color)
+            move_surf = self.history_font.render(text, True, color)
             self.screen.blit(move_surf, (history_x, history_y + 30 + (i//2) * 20))
             if i + 1 < len(self.full_move_history):
                 white_move_str = self.full_move_history[i+1]
                 is_current = (i + 1 == self.history_index - 1)
                 color = constants.DARK_YELLOW if is_current else constants.COLOR_TEXT
-                move_surf = self.font.render(white_move_str, True, color)
+                move_surf = self.history_font.render(white_move_str, True, color)
                 self.screen.blit(move_surf, (history_x + 150, history_y + 30 + (i//2) * 20))
         for btn in self.buttons.values():
             btn.draw(self.screen)
 
     def _draw_bottom_panel(self):
         pygame.draw.rect(self.screen, constants.COLOR_DEV_PANEL_BG, DEV_PANEL_RECT)
-        title_surf = self.large_font.render("AI Analysis", True, constants.COLOR_TEXT)
-        self.screen.blit(title_surf, (DEV_PANEL_RECT.left + 10, DEV_PANEL_RECT.top + 5))
+        
+        # --- FIX: The entire drawing logic for this panel is updated ---
+        y_pos = DEV_PANEL_RECT.top + 10 # Starting Y position for the text
+
         if self.ai_is_thinking:
             think_surf = self.large_font.render("AI is thinking...", True, constants.DARK_YELLOW)
-            self.screen.blit(think_surf, (DEV_PANEL_RECT.left + 20, DEV_PANEL_RECT.top + 40))
+            self.screen.blit(think_surf, (DEV_PANEL_RECT.left + 10, y_pos))
         elif self.last_top_moves:
-            for i, (move, score) in enumerate(self.last_top_moves):
-                move_str = self._format_move_path(move)
-                text = f"Var {i+1}: {move_str:<18} (Eval: {score:.4f})"
-                surf = self.font.render(text, True, constants.DARK_YELLOW if i==0 else constants.COLOR_TEXT)
-                self.screen.blit(surf, (DEV_PANEL_RECT.left + 20, DEV_PANEL_RECT.top + 40 + i * 20))
+            max_moves_to_display = (DEV_PANEL_RECT.height - 20) // 18 # Calculate how many lines fit
+            for i, (variation, score) in enumerate(self.last_top_moves[:max_moves_to_display]):
+                # 1. Format the move sequence (the variation)
+                variation_str = self._format_variation_path(variation)
+                
+                # Truncate if too long to avoid overlapping with the score
+                max_chars = 55
+                if len(variation_str) > max_chars:
+                    variation_str = variation_str[:max_chars-3] + "..."
+                
+                # 2. Format the score
+                score_str = f"(Eval: {score:.4f})"
+
+                # 3. Render the two parts separately
+                var_surf = self.dev_font.render(variation_str, True, constants.DARK_YELLOW if i==0 else constants.COLOR_TEXT)
+                score_surf = self.dev_font.render(score_str, True, constants.DARK_YELLOW if i==0 else constants.COLOR_TEXT)
+
+                # 4. Blit the variation on the left and the score on the right
+                self.screen.blit(var_surf, (DEV_PANEL_RECT.left + 10, y_pos + (i * 18)))
+                self.screen.blit(score_surf, (DEV_PANEL_RECT.right - score_surf.get_width() - 10, y_pos + (i * 18)))
 
     def _handle_board_click(self, pos):
         is_latest_pos = self.history_index == len(self.board_history) - 1
@@ -174,9 +193,7 @@ class CheckersGame:
         if 0 <= self.history_index < len(self.board_history):
             self.board = self.board_history[self.history_index]
             self.turn = self.board.turn
-            # --- FIX: Provide the missing arguments with default None/empty values ---
-            self.valid_moves = _get_all_moves_for_color(self.board, None, [])
-            # --------------------------------------------------------------------
+            self.valid_moves = self.board.get_all_valid_moves(self.turn) 
             self.selected_piece, self.current_move_path = None, []
             self.winner = self.board.winner()
             if not self.winner and not self.valid_moves and self.history_index == len(self.board_history)-1:
@@ -213,7 +230,25 @@ class CheckersGame:
         if self.ai_is_thinking and not self.ai_move_queue.empty():
             self.last_top_moves = self.ai_move_queue.get()
             if self.last_top_moves:
-                best_move_path = self.last_top_moves[0][0]
-                self._apply_move_to_history(best_move_path)
-            else: self._update_game_state_from_history()
+                # --- THIS IS THE FIX ---
+                # best_move_variation is now the full sequence, e.g., [move1, move2, ...]
+                best_move_variation = self.last_top_moves[0][0]
+                
+                # We only apply the FIRST move of the sequence to the board.
+                # The rest of the sequence is just for display in the analysis panel.
+                move_to_apply = best_move_variation[0]
+                self._apply_move_to_history(move_to_apply)
+                # --------------------------------------------------------------------
+            else: 
+                self._update_game_state_from_history()
             self.ai_is_thinking = False
+            
+    def _format_variation_path(self, variation):
+        """ Formats a sequence of moves into a readable string. """
+        if not variation: return ""
+        
+        formatted_moves = []
+        for move_path in variation:
+            sep = 'x' if abs(move_path[0][0] - move_path[1][0]) == 2 else '-'
+            formatted_moves.append(sep.join(str(COORD_TO_ACF.get(pos, "??")) for pos in move_path))
+        return " ".join(formatted_moves)

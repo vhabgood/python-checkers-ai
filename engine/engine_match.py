@@ -69,11 +69,10 @@ class EngineMatchGame:
     def run_ai_calculation(self, board_instance, color_to_move, evaluate_func):
         try:
             logger.info(f"AI_THREAD: Starting calculation for {'White' if color_to_move == WHITE else 'Red'} at depth {self.ai_depth}.")
-            best_move, _ = get_ai_move_analysis(board_instance, self.ai_depth, color_to_move, evaluate_func)
-            self.ai_move_queue.put({'best': best_move})
+            best_move, _ = get_ai_move_analysis(board_instance, self.ai_depth, self.ai_move_queue, evaluate_func)
         except Exception as e:
             logger.error(f"AI_THREAD: CRITICAL ERROR: {e}", exc_info=True)
-            self.ai_move_queue.put({'best': None})
+            self.ai_move_queue.put(None) # Put something to unblock the main thread
 
     def _apply_move_sequence(self, path):
         if not path:

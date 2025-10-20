@@ -2,12 +2,12 @@
 import logging
 import sqlite3
 from .constants import RED, WHITE, ROWS, COLS, COORD_TO_ACF
-from .search import _get_all_moves_for_color
+from .board import Board
 
 eval_logger = logging.getLogger('eval')
 
 # --- Piece Square Tables (PST) ---
-PST_TIER_1_SCORE, PST_TIER_2_SCORE, PST_TIER_3_SCORE = 3.0, 1.5, 0.5
+PST_TIER_1_SCORE, PST_TIER_2_SCORE, PST_TIER_3_SCORE = 1.0, .7, 0.6
 TIER_1_SQUARES = {14, 15, 18, 19} # Center squares
 TIER_2_SQUARES = {1, 2, 3, 5, 16, 17, 30, 31, 32} # Key edge and setup squares
 MAN_PST, KING_PST = [0.0] * 33, [0.0] * 33
@@ -20,35 +20,43 @@ for i in range(1, 33):
 # --- CONFIGURATIONS FOR DIFFERENT ENGINE VERSIONS ---
 # ======================================================================================
 
-V1_CONFIG = {
-    "MATERIAL_MULTIPLIER": 3.3, #tuned 11/24/2025.
-    "POSITIONAL_MULTIPLIER": 0.42, 
-    "BLOCKADE_MULTIPLIER": 0.7, 
-    "MOBILITY_MULTIPLIER": 0.12, 
-    "ADVANCEMENT_MULTIPLIER": 0.07, 
-    "PATHS_TO_KING_MULTIPLIER": 0.8, #beat .5 & .7
-    "MAN_VALUE": 1, #don't adjust. Base value
-    "KING_VALUE": 1.6, #don't adjust Base value
-    "FIRST_KING_BONUS": 25.0, #beat 50 by 1 game, tied with 30 & 20, beat 5 by 1 game 11/23/2025
-    "SIMPLIFICATION_BONUS": 0.1, #champ beat .05 by 1 game and .15 by 1 game 11/23/2025
-    "BLOCKADE_SCORE": 9.0 #beat 10 by 3 games. tied with 8.
+V1_CONFIG = { 
+    "MATERIAL_MULTIPLIER": 0.2, #2025-09-29 06:46:40,537 - Final Score: [.25] 130 - V2 [.2] - Draws 71 (between .2 and .25 next)
+    "POSITIONAL_MULTIPLIER": 0.35, #beat .55 25 straight games. Beat .1 by 25 games and only 50 games in..4 beat .3, beat .4 by 3 games!
+    "BLOCKADE_MULTIPLIER": 0.5, #.5 destroyed .25, even worse to 1.0, beat .75 also badly
+    "MOBILITY_MULTIPLIER": 0.25,     
+    "ADVANCEMENT_MULTIPLIER": 0.05, 
+    "PATHS_TO_KING_MULTIPLIER": 0.40, 
+    "MAN_VALUE": 1, #set
+    "KING_VALUE": 1.6, #set
+    "FIRST_KING_BONUS": .4,
+    "SIMPLIFICATION_BONUS": 0.25,   
+    "BLOCKADE_SCORE": 0.50 
 }
 
 V2_CONFIG = {
-    "MATERIAL_MULTIPLIER": 2.0,
-    "POSITIONAL_MULTIPLIER": 0.32,   
-    "BLOCKADE_MULTIPLIER": 0.2,    
-    "MOBILITY_MULTIPLIER": 0.12,     
-    "ADVANCEMENT_MULTIPLIER": 0.07, 
-    "PATHS_TO_KING_MULTIPLIER": 0.45, 
+    "MATERIAL_MULTIPLIER": 0.2,
+    "POSITIONAL_MULTIPLIER": 0.35,
+    "BLOCKADE_MULTIPLIER": 0.6,    
+    "MOBILITY_MULTIPLIER": 0.25,     
+    "ADVANCEMENT_MULTIPLIER": 0.05, 
+    "PATHS_TO_KING_MULTIPLIER": 0.40, 
     "MAN_VALUE": 1,
     "KING_VALUE": 1.6,
-    "FIRST_KING_BONUS": 3.0,
+    "FIRST_KING_BONUS": .4,
     "SIMPLIFICATION_BONUS": 0.25,   
-    "BLOCKADE_SCORE": 1.0          
+    "BLOCKADE_SCORE": 0.50          
 }
 #left is NONE, right mat mul =3
 def _calculate_score(board, config):
+    # --- THIS IS THE FIX ---
+    # Check for a terminal node (a win/loss) first.
+    # If a winner exists, it means the current player to move has no legal moves and has lost.
+    # The evaluation should be from the perspective of the player whose turn it is,
+    # so we return a massive negative score indicating a loss.
+    if board.winner() is not None:
+        return -99999
+    # -----------------------
     material_score, positional_score, advancement_score = 0, 0, 0
     red_men, white_men, red_kings, white_kings = [], [], [], []
 
@@ -85,33 +93,28 @@ def _calculate_score(board, config):
             if not temp_board.get_valid_moves(piece):
                 blockade_score -= config["BLOCKADE_SCORE"]
 
-    # --- Paths to King Score Calculation ---
     paths_to_king_score = 0
     for r in range(ROWS):
         for c in range(COLS):
             piece = board.get_piece(r, c)
             if piece and not piece.king:
                 if piece.color == RED:
-                    # --- FIX: Added boundary checks ---
                     path1_clear = (r + 1 < ROWS and c - 1 >= 0 and not board.get_piece(r + 1, c - 1))
                     path2_clear = (r + 1 < ROWS and c + 1 < COLS and not board.get_piece(r + 1, c + 1))
-                    # ---------------------------------
                     if path1_clear and path2_clear: paths_to_king_score += (r * 0.2)
                     elif path1_clear or path2_clear: paths_to_king_score += (r * 0.1)
                 else: # Piece is WHITE
-                    # --- FIX: Added boundary checks ---
                     path1_clear = (r - 1 >= 0 and c - 1 >= 0 and not board.get_piece(r - 1, c - 1))
                     path2_clear = (r - 1 >= 0 and c + 1 < COLS and not board.get_piece(r - 1, c + 1))
-                    # ---------------------------------
                     advancement = 7 - r
                     if path1_clear and path2_clear: paths_to_king_score -= (advancement * 0.2)
                     elif path1_clear or path2_clear: paths_to_king_score -= (advancement * 0.1)
 
     temp_board = board.copy()
     temp_board.turn = RED
-    red_moves = _get_all_moves_for_color(temp_board, None, [])
+    red_moves = temp_board.get_all_valid_moves(RED)
     temp_board.turn = WHITE
-    white_moves = _get_all_moves_for_color(temp_board, None, [])
+    white_moves = temp_board.get_all_valid_moves(WHITE)
     mobility_score = len(red_moves) - len(white_moves)
 
     first_king_bonus = 0
@@ -120,8 +123,11 @@ def _calculate_score(board, config):
     elif board.white_kings > 0 and board.red_kings == 0:
         first_king_bonus = -config["FIRST_KING_BONUS"]
 
+    # --- FIX: Check if the current position is "quiet" before adding bonuses ---
+    is_tactical = any(abs(move[0][0] - move[1][0]) == 2 for move in red_moves + white_moves)
     simplification_bonus = 0
-    if material_score != 0:
+    if material_score != 0 and not is_tactical:
+    # -------------------------------------------------------------------------
         total_pieces = board.red_left + board.white_left
         simplification_bonus = (material_score / abs(material_score)) * (32 - total_pieces) * config["SIMPLIFICATION_BONUS"]
 
